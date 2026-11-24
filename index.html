@@ -167,7 +167,7 @@
       <p class="group-title">Сеть контактов</p>
       <div class="field">
         <label>Количество людей N <output id="oN"></output></label>
-        <input type="range" id="N" min="20" max="300" step="1" value="100">
+        <input type="range" id="N" min="20" max="900" step="1" value="100">
       </div>
       <div class="field">
         <label>Среднее число контактов k <output id="oK"></output></label>
@@ -206,7 +206,7 @@
       <p class="group-title">Симуляция</p>
       <div class="field">
         <label>Период симуляции <output id="oT"></output></label>
-        <input type="range" id="T" min="10" max="180" step="1" value="60">
+        <input type="range" id="T" min="10" max="90" step="1" value="60">
       </div>
       <div class="field">
         <label>Начальных заражённых <output id="oI0"></output></label>
@@ -597,7 +597,7 @@
     ctx.clearRect(0, 0, W, H);
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
-    const k = transform.k, nodes = G.nodes, r = nodeR();
+    const k = transform.k, nodes = G.nodes, r = Math.max(nodeR(), 2.6 / k); // at least ~2.6 px on screen
 
     // edges
     ctx.beginPath();
@@ -619,7 +619,9 @@
         const b = Sim.infBy[i];
         if (b >= 0) { ctx.moveTo(nodes[b].x, nodes[b].y); ctx.lineTo(nodes[i].x, nodes[i].y); }
       }
-      ctx.strokeStyle = 'rgba(229,72,77,.75)'; ctx.lineWidth = 1.8 / Math.sqrt(k); ctx.stroke();
+      const big = G.n > 300;
+      ctx.strokeStyle = big ? 'rgba(229,72,77,.5)' : 'rgba(229,72,77,.75)';
+      ctx.lineWidth = (big ? 1.1 : 1.8) / Math.sqrt(k); ctx.stroke();
     }
 
     // nodes, batched by state
