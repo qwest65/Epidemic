@@ -5,6 +5,8 @@
 
 **Онлайн:** https://qwest65.github.io/Epidemic/
 
+> 👉 **Впервые здесь?** Простая инструкция без формул — [GUIDE.md](GUIDE.md).
+
 Всё приложение — один файл [`index.html`](index.html): HTML + CSS + JavaScript, без сборки и без сервера.
 Библиотеки подключаются с CDN jsDelivr:
 
