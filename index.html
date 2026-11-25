@@ -63,6 +63,11 @@
   .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; cursor: pointer; }
   .check input { accent-color: var(--accent); }
   .seed-row { display: flex; gap: 6px; }
+  .date-in {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 5px 8px; font: inherit;
+  }
+  .day-line .day small { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 4px; }
   .seed-row input {
     flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
     border-radius: 6px; padding: 5px 8px; font: inherit; font-variant-numeric: tabular-nums;
@@ -170,6 +175,12 @@
   .fc input:hover, .fc input:focus { border-color: var(--border); outline: none; background: var(--panel); }
   .fc button { padding: 2px 7px; font-size: 12px; }
   .fc-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; padding-left: 18px; }
+  .fc-date { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 11.5px; color: var(--muted); margin-top: 5px; padding-left: 18px; }
+  .fc .fc-date input {
+    flex: none; font-size: 12px; font-weight: 400; background: var(--panel); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px; padding: 1px 4px;
+  }
+  #cmpAxis { grid-template-columns: repeat(2, auto) !important; }
   .cmp-controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 8px; }
   .cmp-controls .seg { grid-template-columns: repeat(6, auto); margin: 0; }
   .cmp-controls .seg label { padding: 5px 9px; }
@@ -316,6 +327,11 @@
     <div class="group">
       <p class="group-title">Симуляция</p>
       <div class="field">
+        <label for="startDate">Дата начала (день 0)</label>
+        <input type="date" id="startDate" class="date-in">
+        <div class="hint">от неё строится ось графиков; у каждого сохранённого прогноза своя дата</div>
+      </div>
+      <div class="field">
         <label>Период симуляции <output id="oT"></output></label>
         <input type="range" id="T" min="10" max="90" step="1" value="60">
       </div>
@@ -384,7 +400,7 @@
 <section class="panel compare" id="compare">
   <div class="compare-head">
     <h2>Сравнение прогнозов</h2>
-    <p class="hint">Настройте параметры, нажмите «Сохранить прогноз», измените что-нибудь и сохраните ещё раз. До 5 прогонов на одном графике. Название прогноза можно изменить, щёлкнув по нему.</p>
+    <p class="hint">Настройте параметры, нажмите «Сохранить прогноз», измените что-нибудь и сохраните ещё раз. До 5 прогнозов на одном графике. Название и дату начала прогноза можно изменить в его карточке.</p>
     <div class="actions">
       <button id="btnPng">⬇ График PNG</button>
       <button id="btnCsv">⬇ Данные CSV</button>
@@ -397,6 +413,10 @@
       <div class="fc-list" id="fcList"></div>
       <div>
         <div class="cmp-controls">
+          <div class="seg" id="cmpAxis">
+            <label><input type="radio" name="caxis" value="date" checked>По датам</label>
+            <label><input type="radio" name="caxis" value="day">По дням от начала</label>
+          </div>
           <div class="seg" id="cmpMetric">
             <label><input type="radio" name="cmetric" value="I" checked>Больные</label>
             <label><input type="radio" name="cmetric" value="new">Новые за день</label>
@@ -463,6 +483,15 @@
     return c;
   };
   const days = n => n + ' ' + plural(n, 'день', 'дня', 'дней');
+  // dates are kept as 'YYYY-MM-DD' strings and computed in UTC, so time zones never shift them
+  const DAY_MS = 864e5;
+  const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+  const isoToMs = iso => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  const addDays = (iso, n) => new Date(isoToMs(iso) + n * DAY_MS).toISOString().slice(0, 10);
+  const diffDays = (a, b) => Math.round((isoToMs(b) - isoToMs(a)) / DAY_MS);
+  const fmtShort = iso => iso.slice(8, 10) + '.' + iso.slice(5, 7);
+  const fmtDate = iso => fmtShort(iso) + '.' + iso.slice(0, 4);
+  const validISO = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   let toastT = 0;
@@ -497,6 +526,8 @@
     P.share = [kid / 100, teen / 100, (100 - kid - teen) / 100];
 
     P.T = +$('T').value;
+    if (!validISO($('startDate').value)) $('startDate').value = todayISO();
+    P.start = $('startDate').value;
     $('I0').max = Math.min(100, P.N);
     P.I0 = Math.min(+$('I0').value, P.N);
     P.showChains = $('showChains').checked;
@@ -712,7 +743,7 @@
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
 
   function initChart() {
-    const labels = d3.range(P.T + 1);
+    const labels = d3.range(P.T + 1).map(d => fmtShort(addDays(P.start, d)));
     const order = [I_, E_, R_, S_];
     const names = ['I больные', 'E инкубация', 'R выздоровевшие', 'S здоровые'];
     const datasets = order.map((s, k) => ({
@@ -732,7 +763,7 @@
         animation: false, responsive: true, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         scales: {
-          x: { title: { display: true, text: 'день' }, grid: { color: 'rgba(255,255,255,.05)' }, ticks: { maxTicksLimit: 12 } },
+          x: { title: { display: true, text: 'дата' }, grid: { color: 'rgba(255,255,255,.05)' }, ticks: { maxTicksLimit: 12 } },
           y: { stacked: true, min: 0, max: G.n, title: { display: true, text: 'человек' }, grid: { color: 'rgba(255,255,255,.05)' } },
         },
         plugins: {
@@ -740,7 +771,7 @@
           tooltip: {
             itemSort: (a, b) => b.datasetIndex - a.datasetIndex,
             callbacks: {
-              title: items => 'День ' + items[0].label,
+              title: items => `${fmtDate(addDays(P.start, items[0].dataIndex))} · день ${items[0].dataIndex}`,
               label: it => ` ${it.dataset.label}: ${it.raw} (${pct(it.raw, G.n)})`,
             },
           },
@@ -762,18 +793,18 @@
 
   function refresh() {
     const n = G.n, c = counts(Sim);
-    $('dayLabel').textContent = `День ${Sim.day} из ${P.T}`;
+    $('dayLabel').innerHTML = `День ${Sim.day} из ${P.T}<small>${fmtDate(addDays(P.start, Sim.day))}</small>`;
     $('progress').style.width = (100 * Sim.day / P.T) + '%';
     ['S', 'E', 'I', 'R'].forEach((k, s) => { $('c' + k).textContent = c[s]; $('p' + k).textContent = pct(c[s], n); });
 
     let status;
-    if (Sim.ended !== null) status = `Эпидемия закончилась на ${Sim.ended}-й день`;
+    if (Sim.ended !== null) status = `Эпидемия закончилась ${fmtDate(addDays(P.start, Sim.ended))} (день ${Sim.ended})`;
     else if (Sim.day >= P.T) status = 'Период симуляции завершён';
     else if (Sim.day === 0) status = 'Готово к запуску';
     else status = playing ? 'Идёт симуляция…' : 'Пауза';
     $('status').textContent = status;
 
-    $('mPeak').textContent = Sim.peak.v ? `${Sim.peak.v} (${pct(Sim.peak.v, n)}), день ${Sim.peak.day}` : '—';
+    $('mPeak').textContent = Sim.peak.v ? `${Sim.peak.v} (${pct(Sim.peak.v, n)}), ${fmtShort(addDays(P.start, Sim.peak.day))}` : '—';
     $('mAttack').textContent = `${n - c[S_]} (${pct(n - c[S_], n)})`;
     $('mAge').textContent = ageLine(ageAttack(Sim));
     const kReal = 2 * G.links.length / n;
@@ -934,9 +965,10 @@
 
   // ================= forecasts (comparison) =================
   let forecasts = [];
-  const CM = { metric: 'I', pct: false, current: false };
+  const CM = { metric: 'I', pct: false, current: false, axis: 'date' };
   const LS_KEY = 'epidemic.forecasts.v1';
   try { const raw = localStorage.getItem(LS_KEY); if (raw) forecasts = JSON.parse(raw) || []; } catch (e) { forecasts = []; }
+  forecasts.forEach(f => { if (!validISO(f.p.start)) f.p.start = todayISO(); });
   function persist() { try { localStorage.setItem(LS_KEY, JSON.stringify(forecasts)); } catch (e) { /* storage unavailable */ } }
 
   function runOnce(r) {
@@ -999,7 +1031,7 @@
       p: {
         diseaseName: P.diseaseName, beta: Math.round(P.beta * 100), dI: P.dI, dE: P.dE.slice(), share: sharePct,
         N: P.N, k: +(+$('K').value).toFixed(1), seed: P.seed, I0: initialSet.length, eInf: P.eInf, randDur: P.randDur,
-        T: P.T, r0: +estimateR0().toFixed(2),
+        T: P.T, start: P.start, r0: +estimateR0().toFixed(2),
         graphKey: [P.N, (+$('K').value).toFixed(1), P.seed, sharePct.join('/'), initialSet.slice().sort((a, b) => a - b).join(',')].join('|'),
       },
     };
@@ -1012,34 +1044,48 @@
   }
 
   // ----- comparison chart -----
-  let cmpChart = null;
+  let cmpChart = null, cmpStart = null;
   function compareData(light) {
-    const m = CM.metric, asPct = CM.pct;
+    const m = CM.metric, asPct = CM.pct, byDate = CM.axis === 'date';
+    const showCur = CM.current && Sim;
+    // common X axis: calendar dates from the earliest start to the latest end, or days from start
+    const spans = forecasts.map(f => ({ start: f.p.start, T: f.p.T }));
+    if (showCur) spans.push({ start: P.start, T: P.T });
+    let labels;
+    if (byDate) {
+      cmpStart = spans.reduce((a, s) => s.start < a ? s.start : a, spans[0].start);
+      const end = spans.reduce((a, s) => { const e = addDays(s.start, s.T); return e > a ? e : a; }, cmpStart);
+      labels = d3.range(diffDays(cmpStart, end) + 1).map(i => fmtShort(addDays(cmpStart, i)));
+    } else {
+      cmpStart = null;
+      labels = d3.range(d3.max(spans, s => s.T) + 1);
+    }
+    const offOf = start => byDate ? diffDays(cmpStart, start) : 0;
+    const place = (arr, off) => off > 0 ? Array(off).fill(null).concat(arr) : arr;
+
     const datasets = [];
-    let maxT = 0;
     for (const f of forecasts) {
-      maxT = Math.max(maxT, f.p.T);
       const conv = v => v == null ? null : (asPct ? +(v / f.p.N * 100).toFixed(2) : v);
-      const s = f.series[m];
+      const s = f.series[m], off = offOf(f.p.start);
       if (f.runs > 1) {
-        datasets.push({ label: '', data: s.lo.map(conv), borderWidth: 0, pointRadius: 0, fill: false, _band: true });
-        datasets.push({ label: '', data: s.hi.map(conv), borderWidth: 0, pointRadius: 0, backgroundColor: f.color + '33', fill: '-1', _band: true, _lo: datasets.length - 1 });
+        datasets.push({ label: '', data: place(s.lo.map(conv), off), borderWidth: 0, pointRadius: 0, fill: false, _band: true });
+        datasets.push({ label: '', data: place(s.hi.map(conv), off), borderWidth: 0, pointRadius: 0, backgroundColor: f.color + '33', fill: '-1', _band: true });
       }
       datasets.push({
-        label: f.name + (f.runs > 1 ? ` (среднее ${f.runs})` : ''), data: s.mean.map(conv),
+        label: f.name + (f.runs > 1 ? ` (среднее ${f.runs})` : ''), data: place(s.mean.map(conv), off),
         borderColor: f.color, backgroundColor: f.color, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 4,
-        tension: 0.2, fill: false, _f: f,
+        tension: 0.2, fill: false, _f: f, _off: off,
       });
     }
-    if (CM.current && Sim) {
-      maxT = Math.max(maxT, P.T);
+    if (showCur) {
       const src = m === 'new' ? Sim.newInf : m === 'cum' ? Sim.hist[S_].map(v => G.n - v) : Sim.hist[{ S: 0, E: 1, I: 2, R: 3 }[m]];
+      const off = offOf(P.start);
       datasets.push({
-        label: 'Текущий прогон', data: src.map(v => asPct ? +(v / G.n * 100).toFixed(2) : v),
-        borderColor: light ? '#333' : '#e6e9ee', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, _cur: true,
+        label: 'Текущий прогон', data: place(src.map(v => asPct ? +(v / G.n * 100).toFixed(2) : v), off),
+        borderColor: light ? '#333' : '#e6e9ee', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, _cur: true, _off: off,
       });
     }
-    return { labels: d3.range(maxT + 1), datasets };
+    return { labels, datasets };
   }
 
   function compareOptions(light) {
@@ -1049,7 +1095,7 @@
       animation: false, responsive: !light, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
-        x: { title: { display: true, text: 'день', color: fg }, ticks: { color: fg, maxTicksLimit: 16 }, grid: { color: grid } },
+        x: { title: { display: true, text: CM.axis === 'date' ? 'дата' : 'день от начала прогноза', color: fg }, ticks: { color: fg, maxTicksLimit: 16 }, grid: { color: grid } },
         y: { min: 0, title: { display: true, text: CM.pct ? '% населения' : 'человек', color: fg }, ticks: { color: fg }, grid: { color: grid } },
       },
       plugins: {
@@ -1059,13 +1105,14 @@
           enabled: !light,
           filter: it => !it.dataset._band,
           callbacks: {
-            title: items => 'День ' + items[0].label,
+            title: items => cmpStart ? fmtDate(addDays(cmpStart, items[0].dataIndex)) : 'День ' + items[0].label,
             label: it => {
-              const f = it.dataset._f;
+              const f = it.dataset._f, day = it.dataIndex - (it.dataset._off || 0);
               let txt = ` ${it.dataset.label}: ${fmt(it.raw)}`;
+              if (cmpStart) txt += ` · день ${day}`;
               if (f && f.runs > 1) {
                 const conv = v => CM.pct ? v / f.p.N * 100 : v;
-                const lo = f.series[CM.metric].lo[it.dataIndex], hi = f.series[CM.metric].hi[it.dataIndex];
+                const lo = f.series[CM.metric].lo[day], hi = f.series[CM.metric].hi[day];
                 if (lo != null) txt += `  (разброс ${fmt(+conv(lo).toFixed(1))}–${fmt(+conv(hi).toFixed(1))})`;
               }
               return txt;
@@ -1118,6 +1165,7 @@
       ['Начальных заражённых', f => f.p.I0],
       ['Заразен в инкубации', f => yes(f.p.eInf)],
       ['Случайные длительности', f => yes(f.p.randDur)],
+      ['Дата начала (день 0)', f => fmtDate(f.p.start)],
       ['Период, дней', f => f.p.T],
       ['Прогонов (усреднение)', f => f.runs],
       ['R₀ (оценка)', f => f.p.r0.toFixed(2)],
@@ -1126,14 +1174,18 @@
       ['Пик больных, чел.', f => fmtStat(f.sum.peakV)],
       ['Пик больных, % населения', f => pctStat(f.sum.peakV && { mean: f.sum.peakV.mean / f.p.N, lo: f.sum.peakV.lo / f.p.N, hi: f.sum.peakV.hi / f.p.N })],
       ['День пика', f => fmtStat(f.sum.peakDay)],
+      ['Дата пика', f => f.sum.peakDay ? fmtDate(addDays(f.p.start, Math.round(f.sum.peakDay.mean))) + (f.runs > 1 ? ' (в среднем)' : '') : '—'],
       ['Всего заражено, чел.', f => fmtStat(f.sum.total)],
       ['Всего заражено, % населения', f => pctStat({ mean: f.sum.total.mean / f.p.N, lo: f.sum.total.lo / f.p.N, hi: f.sum.total.hi / f.p.N })],
       ['Заражено детей', f => pctStat(f.sum.age[0])],
       ['Заражено подростков', f => pctStat(f.sum.age[1])],
       ['Заражено взрослых', f => pctStat(f.sum.age[2])],
-      ['Эпидемия закончилась', f => f.runs === 1
-        ? (f.sum.endedShare ? `на ${Math.round(f.sum.endedDay.mean)}-й день` : 'нет, шла до конца периода')
-        : `в ${Math.round(f.sum.endedShare * 100)}% прогонов` + (f.sum.endedDay ? `, в среднем на ${Math.round(f.sum.endedDay.mean)}-й день` : '')],
+      ['Эпидемия закончилась', f => {
+        const when = st => `${fmtDate(addDays(f.p.start, Math.round(st.mean)))} (день ${Math.round(st.mean)})`;
+        return f.runs === 1
+          ? (f.sum.endedShare ? when(f.sum.endedDay) : 'нет, шла до конца периода')
+          : `в ${Math.round(f.sum.endedShare * 100)}% прогонов` + (f.sum.endedDay ? `, в среднем ${when(f.sum.endedDay)}` : '');
+      }],
     ];
     return { params, results };
   }
@@ -1163,6 +1215,7 @@
           <button data-del title="Удалить прогноз">✕</button>
         </div>
         <div class="fc-sub">${esc(f.p.diseaseName)} · N=${f.p.N}, k=${f.p.k}, seed ${f.p.seed}${f.runs > 1 ? ` · ${f.runs} прогонов` : ''}</div>
+        <div class="fc-date">начало <input type="date" value="${f.p.start}" data-date aria-label="Дата начала прогноза"> по ${fmtDate(addDays(f.p.start, f.p.T))}</div>
       </div>`).join('');
   }
 
@@ -1186,6 +1239,11 @@
   $('fcList').addEventListener('change', e => {
     const card = e.target.closest('.fc'); if (!card || e.target.tagName !== 'INPUT') return;
     const f = forecasts.find(x => x.id === card.dataset.id);
+    if (e.target.matches('[data-date]')) {
+      if (validISO(e.target.value)) f.p.start = e.target.value;
+      persist(); renderCompare();
+      return;
+    }
     f.name = e.target.value.trim() || f.name;
     persist(); updateCompareChart(); renderTable();
   });
@@ -1197,6 +1255,9 @@
   });
   $('cmpMetric').addEventListener('change', () => {
     CM.metric = document.querySelector('input[name=cmetric]:checked').value; updateCompareChart();
+  });
+  $('cmpAxis').addEventListener('change', () => {
+    CM.axis = document.querySelector('input[name=caxis]:checked').value; updateCompareChart();
   });
   $('cmpPct').addEventListener('change', e => { CM.pct = e.target.checked; updateCompareChart(); });
   $('cmpCur').addEventListener('change', e => { CM.current = e.target.checked; updateCompareChart(); });
@@ -1234,10 +1295,25 @@
     for (const [label, fn] of [...params, ...results]) lines.push([label, ...forecasts.map(fn)].map(cell).join(sep));
     lines.push('');
     const keys = [['S', 'здоровые'], ['E', 'инкубация'], ['I', 'больные'], ['R', 'выздоровели'], ['new', 'новые за день'], ['cum', 'всего заражено']];
-    lines.push(['День', ...forecasts.flatMap(f => keys.map(([, nm]) => `${f.name}: ${nm}`))].map(cell).join(sep));
-    const maxT = Math.max(...forecasts.map(f => f.p.T));
-    for (let d = 0; d <= maxT; d++) {
-      lines.push([d, ...forecasts.flatMap(f => keys.map(([k]) => num(f.series[k].mean[d])))].map(cell).join(sep));
+    const header = forecasts.flatMap(f => keys.map(([, nm]) => `${f.name}: ${nm}`));
+    if (CM.axis === 'date') {
+      // one row per calendar date; a forecast's cells are empty outside its own period
+      const start = forecasts.reduce((a, f) => f.p.start < a ? f.p.start : a, forecasts[0].p.start);
+      const end = forecasts.reduce((a, f) => { const e = addDays(f.p.start, f.p.T); return e > a ? e : a; }, start);
+      lines.push(['Дата', ...header].map(cell).join(sep));
+      for (let i = 0; i <= diffDays(start, end); i++) {
+        const date = addDays(start, i);
+        lines.push([fmtDate(date), ...forecasts.flatMap(f => {
+          const d = diffDays(f.p.start, date);
+          return keys.map(([k]) => d >= 0 && d <= f.p.T ? num(f.series[k].mean[d]) : '');
+        })].map(cell).join(sep));
+      }
+    } else {
+      lines.push(['День от начала', ...header].map(cell).join(sep));
+      const maxT = Math.max(...forecasts.map(f => f.p.T));
+      for (let d = 0; d <= maxT; d++) {
+        lines.push([d, ...forecasts.flatMap(f => keys.map(([k]) => num(f.series[k].mean[d])))].map(cell).join(sep));
+      }
     }
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1264,6 +1340,7 @@
     resetSim();
   });
   $('I0').addEventListener('input', () => { readParams(); pickInitial(); resetSim(); });
+  $('startDate').addEventListener('change', () => { readParams(); initChart(); refresh(); });
   $('showChains').addEventListener('input', () => { readParams(); requestDraw(); });
   $('speed').addEventListener('input', readParams);
 
