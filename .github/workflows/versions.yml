@@ -1,0 +1,50 @@
+# Ставит git-теги и создаёт релизы для версий сайта.
+# Прошлые версии берутся из .github/versions.txt, текущая — из номера в шапке index.html
+# (<a class="ver">vX.Y</a>) и ставится на коммит, который сейчас попал в main.
+# Уже существующие теги не трогаются, поэтому запускать можно сколько угодно раз.
+name: Версии и релизы
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Создать недостающие теги и релизы
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          current=$(grep -o 'class="ver"[^>]*>v[0-9.]*<' index.html | grep -o 'v[0-9][0-9.]*' | head -n1 || true)
+          echo "Текущая версия на сайте: ${current:-не найдена}"
+
+          { grep -v '^#' .github/versions.txt; if [ -n "$current" ]; then echo "$current $GITHUB_SHA"; fi; } |
+          while read -r tag sha; do
+            [ -z "${tag:-}" ] && continue
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "$tag — уже есть"; continue
+            fi
+            git tag -a "$tag" "$sha" -m "Версия $tag"
+            git push origin "refs/tags/$tag"
+
+            # описание релиза — раздел этой версии из CHANGELOG.md
+            awk -v t="$tag" 'index($0, "## " t " ") == 1 {f=1; next} f && /^## / {exit} f' CHANGELOG.md > notes.md
+            title=$(grep -m1 "^## $tag " CHANGELOG.md | sed 's/^## //' || true)
+            latest=false
+            [ "$tag" = "$current" ] && latest=true
+            gh release create "$tag" --title "${title:-$tag}" --notes-file notes.md --verify-tag --latest="$latest"
+            echo "$tag — создан"
+          done
