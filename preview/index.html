@@ -1,0 +1,1890 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Эпидемия на графе — превью</title>
+<meta name="description" content="Симуляция SEIR-эпидемии на случайном графе Эрдёша — Реньи G(n, p) со сравнением прогнозов">
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-2: #1c222b;
+    --border: #2a313c;
+    --text: #e6e9ee;
+    --muted: #8b95a3;
+    --accent: #7aa2f7;
+    --S: #6b8fb8;
+    --E: #f2a93b;
+    --I: #e5484d;
+    --R: #3fb68b;
+    --edge: rgba(150, 165, 185, 0.18);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.4; }
+  [hidden] { display: none !important; }
+
+  header {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 17px; font-weight: 600; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header a { color: var(--accent); font-size: 13px; margin-left: auto; text-decoration: none; }
+  header a.ver { margin-left: 0; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; font-variant-numeric: tabular-nums; }
+  header a.ver:hover { color: var(--accent); border-color: var(--accent); }
+
+  .app {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr) 360px;
+    gap: 12px; padding: 12px;
+    height: calc(100vh - 49px); min-height: 640px;
+  }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    min-height: 0;
+  }
+
+  /* ---------- controls ---------- */
+  aside.panel { padding: 14px; overflow-y: auto; }
+  .group { margin-bottom: 16px; }
+  .group-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0 0 8px;
+  }
+  .field { margin-bottom: 10px; }
+  .field label, .field .lbl-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 3px; }
+  .field output { font-variant-numeric: tabular-nums; color: var(--accent); white-space: nowrap; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; cursor: pointer; }
+  .check input { accent-color: var(--accent); }
+  .seed-row { display: flex; gap: 6px; }
+  .date-in {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 5px 8px; font: inherit;
+  }
+  .day-line .day small { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+  .seed-row input {
+    flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 5px 8px; font: inherit; font-variant-numeric: tabular-nums;
+  }
+
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #0e1116; border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.1); }
+  button.save { background: #253250; border-color: #3d5488; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+  .btn-row .wide { grid-column: span 2; }
+
+  /* segmented radio */
+  .seg { display: grid; gap: 4px; margin-bottom: 8px; }
+  .seg.c4 { grid-template-columns: repeat(4, 1fr); }
+  .seg label {
+    position: relative; text-align: center; font-size: 12.5px; padding: 6px 2px; border-radius: 6px;
+    background: var(--panel-2); border: 1px solid var(--border); cursor: pointer; user-select: none;
+  }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label:has(input:checked) { background: var(--accent); color: #0e1116; border-color: var(--accent); font-weight: 600; }
+  .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .info-box {
+    background: var(--panel-2); border-radius: 6px; padding: 7px 9px; font-size: 12px; color: var(--muted);
+    margin-bottom: 10px; line-height: 1.55;
+  }
+  .info-box b { color: var(--text); font-weight: 600; }
+  .sub-box { border-left: 2px solid var(--border); padding-left: 10px; margin-bottom: 10px; }
+  .age-mix { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 2px 0 4px; }
+  .age-mix div { height: 100%; }
+
+  /* ---------- graph ---------- */
+  .graph-panel { position: relative; overflow: hidden; }
+  .graph-panel canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  .graph-panel canvas:active { cursor: grabbing; }
+  .overlay-top {
+    position: absolute; top: 10px; left: 10px; right: 10px;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; pointer-events: none;
+  }
+  .legend {
+    display: flex; gap: 4px 10px; flex-wrap: wrap; font-size: 12px; max-width: 520px;
+    background: rgba(14,17,22,.78); padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend .sep { flex-basis: 100%; height: 0; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .shape { display: inline-block; width: 9px; height: 9px; background: var(--muted); }
+  .shape.circle { border-radius: 50%; }
+  .shape.diamond { transform: rotate(45deg) scale(.85); }
+  .overlay-top button { pointer-events: auto; padding: 4px 8px; font-size: 12px; }
+  .graph-hint {
+    position: absolute; bottom: 8px; left: 10px; right: 10px; font-size: 11.5px; color: var(--muted);
+    pointer-events: none;
+  }
+  .tooltip {
+    position: absolute; pointer-events: none; background: rgba(22,27,34,.96); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 9px; font-size: 12px; line-height: 1.5; display: none; z-index: 5;
+    min-width: 160px; box-shadow: 0 4px 16px rgba(0,0,0,.35);
+  }
+  .tooltip b { font-weight: 600; }
+
+  /* ---------- right column ---------- */
+  .right { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; min-height: 0; }
+  .stats { padding: 12px; }
+  .day-line { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px; }
+  .day-line .day { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .day-line .status { font-size: 12px; color: var(--muted); text-align: right; }
+  .progress { height: 4px; background: var(--panel-2); border-radius: 2px; overflow: hidden; margin-bottom: 10px; }
+  .progress div { height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+  .card { background: var(--panel-2); border-radius: 8px; padding: 7px 8px; border-top: 3px solid; }
+  .card .lbl { font-size: 11px; color: var(--muted); }
+  .card .val { font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .card .pct { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; font-size: 12.5px; }
+  .metrics div { display: flex; justify-content: space-between; gap: 6px; }
+  .metrics div.full { grid-column: 1 / -1; }
+  .metrics span:first-child { color: var(--muted); }
+  .metrics span:last-child { font-variant-numeric: tabular-nums; text-align: right; }
+  .r0-note { margin-top: 8px; font-size: 12px; padding: 6px 8px; border-radius: 6px; background: var(--panel-2); }
+  .chart-panel { padding: 10px 12px; display: flex; flex-direction: column; min-height: 260px; }
+  .chart-panel .group-title { margin-bottom: 4px; }
+  .chart-wrap { position: relative; flex: 1; min-height: 0; }
+
+  /* ---------- right side panel ---------- */
+  .side { display: flex; flex-direction: column; overflow-y: auto; }
+  .side-sec { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .side-sec:last-child { border-bottom: 0; }
+  .sec-title { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .side .day-line { margin-bottom: 8px; flex-direction: column; align-items: flex-start; gap: 1px; }
+  .side .day-line .status { text-align: left; }
+  .sec-title { white-space: nowrap; }
+  .seg label { white-space: nowrap; }
+  .seg.c4 label { font-size: 12px; padding: 6px 0; }
+  .side .progress { margin-bottom: 0; }
+  .mix { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; background: var(--panel-2); }
+  .mix div { height: 100%; min-width: 0; transition: width .35s ease; }
+  .mix-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin-top: 9px; font-size: 12.5px; }
+  .ml { display: flex; align-items: center; gap: 6px; }
+  .ml-name { color: var(--muted); flex: 1; }
+  .ml b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ml-pct { color: var(--muted); font-size: 11.5px; min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+  .ml { min-width: 0; }
+  .ml .dot, .kpi-sub .dot { flex: none; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .kpi-lbl { font-size: 11px; color: var(--muted); }
+  .kpi-val { font-size: 26px; font-weight: 650; line-height: 1.15; font-variant-numeric: tabular-nums; margin: 2px 0 1px; }
+  .kpi-sub { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .chart-sec { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 270px; }
+  .sec-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .sec-head .sec-title { margin: 0; }
+  .seg.mini { grid-template-columns: repeat(2, auto); margin: 0; }
+  .seg.mini label { padding: 3px 9px; font-size: 11.5px; }
+  .chart-sec .chart-wrap { min-height: 210px; }
+  .agebars { display: grid; gap: 7px; }
+  .ab { display: grid; grid-template-columns: 92px 1fr 38px; align-items: center; gap: 8px; font-size: 12.5px; }
+  .ab .nm { color: var(--muted); }
+  .ab .track { height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+  .ab .fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width .35s ease; }
+  .ab .v { text-align: right; font-variant-numeric: tabular-nums; }
+  details.net summary { cursor: pointer; font-size: 12.5px; color: var(--muted); user-select: none; }
+  details.net summary:hover { color: var(--text); }
+  details.net .metrics { margin-top: 9px; grid-template-columns: 1fr; }
+
+  /* ---------- wow ---------- */
+  .live { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--border); margin-right: 9px; vertical-align: 1px; }
+  .live.on { background: var(--I); animation: livePulse 1.4s infinite; }
+  @keyframes livePulse {
+    0% { box-shadow: 0 0 0 0 rgba(229,72,77,.75); }
+    70% { box-shadow: 0 0 0 9px rgba(229,72,77,0); }
+    100% { box-shadow: 0 0 0 0 rgba(229,72,77,0); }
+  }
+  .tools { display: flex; gap: 6px; pointer-events: auto; flex-wrap: wrap; justify-content: flex-end; }
+  .tools button { padding: 4px 8px; font-size: 12px; background: rgba(28,34,43,.92); }
+  .tools button.on { background: var(--accent); color: #0e1116; border-color: var(--accent); font-weight: 600; }
+  .caption {
+    position: absolute; left: 50%; bottom: 40px; transform: translate(-50%, 14px);
+    width: max-content; max-width: min(680px, calc(100% - 32px));
+    background: rgba(14,17,22,.9); border: 1px solid var(--border); border-radius: 12px;
+    padding: 11px 18px; font-size: 16px; line-height: 1.45; text-align: center;
+    opacity: 0; transition: opacity .45s ease, transform .45s ease; pointer-events: none; z-index: 6;
+    box-shadow: 0 10px 34px rgba(0,0,0,.5);
+  }
+  .caption.show { opacity: 1; transform: translate(-50%, 0); }
+  .graph-hint { transition: opacity .3s; }
+  .caption.show ~ .graph-hint { opacity: 0; }
+  .caption b { color: var(--I); }
+  .graph-panel:fullscreen { border-radius: 0; border: 0; background: var(--bg); }
+  .graph-panel:fullscreen .caption { font-size: 22px; bottom: 60px; }
+  .card .val { transition: color .3s; }
+
+  /* ---------- comparison ---------- */
+  .compare { margin: 0 12px 16px; padding: 14px; }
+  .compare-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 12px; }
+  .compare-head h2 { font-size: 16px; margin: 0; font-weight: 600; }
+  .compare-head .hint { margin: 0; flex: 1; min-width: 220px; }
+  .compare-head .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .compare-grid { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 12px; }
+  .fc-list { display: flex; flex-direction: column; gap: 6px; }
+  .fc { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 8px; }
+  .fc-top { display: flex; align-items: center; gap: 6px; }
+  .fc .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .fc input {
+    flex: 1; min-width: 0; background: transparent; border: 1px solid transparent; color: var(--text);
+    font: inherit; font-size: 13px; font-weight: 600; padding: 2px 4px; border-radius: 4px;
+  }
+  .fc input:hover, .fc input:focus { border-color: var(--border); outline: none; background: var(--panel); }
+  .fc button { padding: 2px 7px; font-size: 12px; }
+  .fc-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; padding-left: 18px; }
+  .fc-date { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 11.5px; color: var(--muted); margin-top: 5px; padding-left: 18px; }
+  .fc .fc-date input {
+    flex: none; font-size: 12px; font-weight: 400; background: var(--panel); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px; padding: 1px 4px;
+  }
+  #cmpAxis { grid-template-columns: repeat(2, auto) !important; }
+  .cmp-controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 8px; }
+  .cmp-controls .seg { grid-template-columns: repeat(6, auto); margin: 0; }
+  .cmp-controls .seg label { padding: 5px 9px; }
+  .cmp-controls .check { margin: 0; }
+  .cmp-chart { position: relative; height: 420px; }
+  .empty {
+    border: 1px dashed var(--border); border-radius: 8px; padding: 22px; text-align: center; color: var(--muted);
+    font-size: 13px;
+  }
+  .cmp-warn { font-size: 12.5px; color: var(--E); margin: 10px 0 0; }
+  .table-wrap { overflow-x: auto; margin-top: 12px; }
+  table.cmp { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  table.cmp th, table.cmp td { border-bottom: 1px solid var(--border); padding: 5px 8px; text-align: left; white-space: nowrap; }
+  table.cmp thead th { font-weight: 600; }
+  table.cmp tbody th { font-weight: 400; color: var(--muted); }
+  table.cmp tr.section th { color: var(--text); font-weight: 600; padding-top: 12px; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
+  table.cmp tr.diff td { color: var(--E); font-weight: 600; }
+  .toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #253250; color: var(--text);
+    border: 1px solid #3d5488; padding: 9px 14px; border-radius: 8px; font-size: 13px; z-index: 20;
+    box-shadow: 0 6px 24px rgba(0,0,0,.4); max-width: calc(100vw - 32px);
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1200px) {
+    .app { grid-template-columns: 290px minmax(0, 1fr); height: auto; }
+    .graph-panel { height: 60vh; min-height: 380px; }
+    .side { grid-column: 1 / -1; overflow: visible; }
+    .chart-sec { min-height: 320px; }
+    .chart-panel { min-height: 320px; }
+  }
+  @media (max-width: 900px) {
+    .compare-grid { grid-template-columns: minmax(0, 1fr); }
+    .cmp-chart { height: 340px; }
+  }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: minmax(0, 1fr); padding: 8px 16px; }
+    .kpi-val { font-size: 22px; }
+    .graph-panel { height: 70vw; min-height: 320px; }
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .caption { font-size: 14px; bottom: 44px; }
+    .metrics { grid-template-columns: 1fr; }
+    .compare { margin: 0 16px 16px; }
+    .cmp-controls .seg { grid-template-columns: repeat(3, 1fr); }
+    table.cmp tbody th { white-space: normal; min-width: 150px; }
+  }
+</style>
+</head>
+<body>
+<div style="background:#1f2a44;color:#c9d6f5;border-bottom:1px solid #3d5488;padding:8px 16px;font:13px system-ui,sans-serif"><b>Превью</b>: новое оформление правой панели и графика «Эпидемическая волна». <a href="../" style="color:#7aa2f7">Открыть текущую версию для сравнения</a></div>
+<header>
+  <h1><span class="live" id="live" title="Симуляция идёт"></span>Эпидемия на случайном графе</h1>
+  <span class="sub">модель SEIR на графе Эрдёша — Реньи G(n, p)</span>
+  <a href="#compare">Сравнение прогнозов ↓</a>
+  <a class="ver" href="../" title="Вернуться к текущей версии сайта">превью</a>
+</header>
+
+<div class="app">
+  <!-- ======== Controls ======== -->
+  <aside class="panel">
+    <div class="group">
+      <div class="btn-row">
+        <button id="btnPlay" class="primary">▶ Старт</button>
+        <button id="btnStep">+1 день</button>
+        <button id="btnReset">↺ Сброс</button>
+        <button id="btnNewGraph">Новый граф</button>
+        <button id="btnSave" class="save wide">💾 Сохранить прогноз для сравнения</button>
+      </div>
+      <label class="check"><input type="checkbox" id="mc"> Усреднить по 20 прогонам</label>
+      <label class="check"><input type="checkbox" id="fx" checked> ✨ Анимация заражений и эффекты</label>
+      <div class="field">
+        <label>Скорость <output id="oSpeed"></output></label>
+        <input type="range" id="speed" min="0.5" max="20" step="0.5" value="4">
+      </div>
+    </div>
+
+    <div class="group">
+      <p class="group-title">Болезнь</p>
+      <div class="seg c4" id="diseaseSeg">
+        <label><input type="radio" name="disease" value="orvi">ОРВИ</label>
+        <label><input type="radio" name="disease" value="flu">Грипп</label>
+        <label><input type="radio" name="disease" value="covid" checked>COVID-19</label>
+        <label><input type="radio" name="disease" value="custom">Своя</label>
+      </div>
+      <div class="info-box" id="presetInfo"></div>
+      <div class="sub-box" id="customBox" hidden>
+        <div class="field">
+          <label>Вероятность заражения β <output id="oBeta"></output></label>
+          <input type="range" id="beta" min="1" max="100" step="1" value="20">
+          <div class="hint">за один день контакта с одним больным</div>
+        </div>
+        <div class="field">
+          <label>Сколько дней заразен (I) <output id="oDI"></output></label>
+          <input type="range" id="dI" min="1" max="21" step="1" value="7">
+        </div>
+        <div class="field">
+          <label>Инкубация: дети <output id="oDE0"></output></label>
+          <input type="range" id="dE0" min="0" max="14" step="1" value="3">
+        </div>
+        <div class="field">
+          <label>Инкубация: подростки <output id="oDE1"></output></label>
+          <input type="range" id="dE1" min="0" max="14" step="1" value="3">
+        </div>
+        <div class="field">
+          <label>Инкубация: взрослые <output id="oDE2"></output></label>
+          <input type="range" id="dE2" min="0" max="14" step="1" value="3">
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="eInf"> Заразен в инкубации</label>
+      <label class="check"><input type="checkbox" id="randDur"> Случайные длительности (среднее = заданное)</label>
+    </div>
+
+    <div class="group">
+      <p class="group-title">Население</p>
+      <div class="field">
+        <label>Количество людей N <output id="oN"></output></label>
+        <input type="range" id="N" min="20" max="900" step="1" value="100">
+      </div>
+      <div class="field">
+        <label>Дети <output id="oKid"></output></label>
+        <input type="range" id="kid" min="0" max="100" step="1" value="20">
+      </div>
+      <div class="field">
+        <label>Подростки <output id="oTeen"></output></label>
+        <input type="range" id="teen" min="0" max="100" step="1" value="15">
+      </div>
+      <div class="field">
+        <div class="lbl-row"><span>Взрослые (остаток)</span><output id="oAdult"></output></div>
+        <div class="age-mix" id="ageMix"></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <p class="group-title">Сеть контактов</p>
+      <div class="field">
+        <label>Среднее число контактов k <output id="oK"></output></label>
+        <input type="range" id="K" min="0.5" max="15" step="0.1" value="4">
+        <div class="hint" id="hintP"></div>
+      </div>
+      <div class="field">
+        <label>Seed (зерно случайности)</label>
+        <div class="seed-row">
+          <input type="number" id="seed" value="42" min="0" step="1">
+          <button id="btnDice" title="Случайный seed">🎲</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <p class="group-title">Симуляция</p>
+      <div class="field">
+        <label for="startDate">Дата начала (день 0)</label>
+        <input type="date" id="startDate" class="date-in">
+        <div class="hint">от неё строится ось графиков; у каждого сохранённого прогноза своя дата</div>
+      </div>
+      <div class="field">
+        <label>Период симуляции <output id="oT"></output></label>
+        <input type="range" id="T" min="10" max="90" step="1" value="60">
+      </div>
+      <div class="field">
+        <label>Начальных заражённых <output id="oI0"></output></label>
+        <input type="range" id="I0" min="1" max="100" step="1" value="2">
+      </div>
+      <label class="check"><input type="checkbox" id="showChains" checked> Показывать цепочки заражения</label>
+    </div>
+  </aside>
+
+  <!-- ======== Graph ======== -->
+  <section class="panel graph-panel" id="graphPanel">
+    <canvas id="graph"></canvas>
+    <div class="overlay-top">
+      <div class="legend">
+        <span><i class="dot" style="background:var(--S)"></i>S здоровые</span>
+        <span><i class="dot" style="background:var(--E)"></i>E инкубация</span>
+        <span><i class="dot" style="background:var(--I)"></i>I больные</span>
+        <span><i class="dot" style="background:var(--R)"></i>R выздоровевшие</span>
+        <span class="sep"></span>
+        <span><i class="shape"></i>дети</span>
+        <span><i class="shape diamond"></i>подростки</span>
+        <span><i class="shape circle"></i>взрослые</span>
+      </div>
+      <div class="tools">
+        <button id="btnDemo" title="Демонстрация: камера следит за эпидемией, внизу подписи">🎬 Демо</button>
+        <button id="btnTree" title="Перестроить людей в дерево заражения по поколениям">🌳 Дерево</button>
+        <button id="btnFit" title="Вписать граф в окно">⤢</button>
+        <button id="btnFull" title="Во весь экран">⛶</button>
+      </div>
+    </div>
+    <div class="caption" id="caption"></div>
+    <div class="graph-hint">Колесо мыши: масштаб · перетаскивание: сдвиг · клик по узлу в день 0: добавить или убрать нулевого пациента</div>
+    <div class="tooltip" id="tooltip"></div>
+  </section>
+
+  <!-- ======== Stats + chart ======== -->
+  <aside class="panel side" id="side">
+    <div class="side-sec">
+      <div class="day-line">
+        <div class="day" id="dayLabel">День 0 из 60</div>
+        <div class="status" id="status"></div>
+      </div>
+      <div class="progress"><div id="progress"></div></div>
+    </div>
+
+    <div class="side-sec">
+      <p class="sec-title">Город сейчас</p>
+      <div class="mix" aria-hidden="true">
+        <div id="segS" style="background:var(--S)"></div><div id="segE" style="background:var(--E)"></div><div id="segI" style="background:var(--I)"></div><div id="segR" style="background:var(--R)"></div>
+      </div>
+      <div class="mix-legend">
+        <div class="ml"><i class="dot" style="background:var(--S)"></i><span class="ml-name">Здоровые</span><b id="cS">0</b><span class="ml-pct" id="pS"></span></div>
+        <div class="ml"><i class="dot" style="background:var(--I)"></i><span class="ml-name">Больные</span><b id="cI">0</b><span class="ml-pct" id="pI"></span></div>
+        <div class="ml"><i class="dot" style="background:var(--E)"></i><span class="ml-name">Инкубация</span><b id="cE">0</b><span class="ml-pct" id="pE"></span></div>
+        <div class="ml"><i class="dot" style="background:var(--R)"></i><span class="ml-name">Выздоровели</span><b id="cR">0</b><span class="ml-pct" id="pR"></span></div>
+      </div>
+    </div>
+
+    <div class="side-sec kpis">
+      <div><div class="kpi-lbl">Пик больных</div><div class="kpi-val" id="kPeak">—</div><div class="kpi-sub" id="kPeakSub"></div></div>
+      <div><div class="kpi-lbl">Переболело</div><div class="kpi-val" id="kAttack">—</div><div class="kpi-sub" id="kAttackSub"></div></div>
+      <div><div class="kpi-lbl">R₀</div><div class="kpi-val" id="kR0">—</div><div class="kpi-sub" id="kR0Sub"></div></div>
+    </div>
+
+    <div class="side-sec chart-sec">
+      <div class="sec-head">
+        <p class="sec-title">Эпидемическая волна</p>
+        <div class="seg mini" id="chartMode">
+          <label><input type="radio" name="cmode" value="wave" checked>Волна</label>
+          <label><input type="radio" name="cmode" value="all">Все группы</label>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    </div>
+
+    <div class="side-sec">
+      <p class="sec-title">Заразились по возрастам</p>
+      <div class="agebars" id="ageBars"></div>
+    </div>
+
+    <details class="side-sec net">
+      <summary>О сети контактов и R₀</summary>
+      <div class="metrics">
+        <div><span>Рёбер / факт. k</span><span id="mEdges">—</span></div>
+        <div><span>Крупнейшая связная группа</span><span id="mComp">—</span></div>
+        <div><span>Людей без контактов</span><span id="mIso">—</span></div>
+      </div>
+      <div class="r0-note" id="r0Note"></div>
+    </details>
+  </aside>
+</div>
+
+<!-- ======== Comparison ======== -->
+<section class="panel compare" id="compare">
+  <div class="compare-head">
+    <h2>Сравнение прогнозов</h2>
+    <p class="hint">Настройте параметры, нажмите «Сохранить прогноз», измените что-нибудь и сохраните ещё раз. До 5 прогнозов на одном графике. Название и дату начала прогноза можно изменить в его карточке.</p>
+    <div class="actions">
+      <button id="btnPng">⬇ График PNG</button>
+      <button id="btnCsv">⬇ Данные CSV</button>
+      <button id="btnClear">Очистить всё</button>
+    </div>
+  </div>
+  <div class="empty" id="cmpEmpty">Пока нет сохранённых прогнозов. Нажмите <b>«💾 Сохранить прогноз для сравнения»</b> в панели слева.</div>
+  <div id="cmpBody" hidden>
+    <div class="compare-grid">
+      <div class="fc-list" id="fcList"></div>
+      <div>
+        <div class="cmp-controls">
+          <div class="seg" id="cmpAxis">
+            <label><input type="radio" name="caxis" value="date" checked>По датам</label>
+            <label><input type="radio" name="caxis" value="day">По дням от начала</label>
+          </div>
+          <div class="seg" id="cmpMetric">
+            <label><input type="radio" name="cmetric" value="I" checked>Больные</label>
+            <label><input type="radio" name="cmetric" value="new">Новые за день</label>
+            <label><input type="radio" name="cmetric" value="cum">Всего заражено</label>
+            <label><input type="radio" name="cmetric" value="E">Инкубация</label>
+            <label><input type="radio" name="cmetric" value="S">Здоровые</label>
+            <label><input type="radio" name="cmetric" value="R">Выздоровели</label>
+          </div>
+          <label class="check"><input type="checkbox" id="cmpPct"> в % от населения</label>
+          <label class="check"><input type="checkbox" id="cmpCur"> показать текущий прогон</label>
+        </div>
+        <div class="cmp-chart"><canvas id="cmpChart"></canvas></div>
+      </div>
+    </div>
+    <p class="cmp-warn" id="cmpWarn" hidden></p>
+    <div class="table-wrap"><table class="cmp" id="cmpTable"></table></div>
+  </div>
+</section>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ================= constants & helpers =================
+  const css = getComputedStyle(document.documentElement);
+  const COL = ['S', 'E', 'I', 'R'].map(s => css.getPropertyValue('--' + s).trim());
+  const EDGE_COL = css.getPropertyValue('--edge').trim();
+  const S_ = 0, E_ = 1, I_ = 2, R_ = 3;
+  const NAMES = ['Здоров (S)', 'Инкубация (E)', 'Болен (I)', 'Выздоровел (R)'];
+  const AGE_ONE = ['ребёнок', 'подросток', 'взрослый'];
+  const AGE_COL = ['#c792ea', '#7dcfff', '#8b95a3'];
+
+  // Disease presets. Incubation (dE) is given per age group: [children, teens, adults].
+  // Values are approximate, chosen for teaching purposes (see README).
+  const DISEASES = {
+    orvi:   { name: 'ОРВИ',     beta: 13, dI: 6, dE: [2, 2, 3] },
+    flu:    { name: 'Грипп',    beta: 9,  dI: 6, dE: [1, 2, 2] },
+    covid:  { name: 'COVID-19', beta: 16, dI: 9, dE: [6, 5, 5] },
+    custom: { name: 'Своя' },
+  };
+  const FC_COLORS = ['#5b9bf5', '#f06292', '#4caf50', '#ffa726', '#ab47bc'];
+  const MAX_FC = 5, MC_RUNS = 20;
+  const METRIC_NAMES = {
+    I: 'Больные (I) в этот день', new: 'Новые заражения за день', cum: 'Всего заражено с начала',
+    E: 'В инкубации (E)', S: 'Здоровые (S)', R: 'Выздоровевшие (R)',
+  };
+
+  const $ = id => document.getElementById(id);
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const pct = (v, n) => (100 * v / n).toFixed(1) + '%';
+  const plural = (n, a, b, c) => {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return a;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return b;
+    return c;
+  };
+  const days = n => n + ' ' + plural(n, 'день', 'дня', 'дней');
+  // dates are kept as 'YYYY-MM-DD' strings and computed in UTC, so time zones never shift them
+  const DAY_MS = 864e5;
+  const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+  const isoToMs = iso => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  const addDays = (iso, n) => new Date(isoToMs(iso) + n * DAY_MS).toISOString().slice(0, 10);
+  const diffDays = (a, b) => Math.round((isoToMs(b) - isoToMs(a)) / DAY_MS);
+  const fmtShort = iso => iso.slice(8, 10) + '.' + iso.slice(5, 7);
+  const fmtDate = iso => fmtShort(iso) + '.' + iso.slice(0, 4);
+  const validISO = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  let toastT = 0;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3500);
+  }
+
+  // ================= params =================
+  const P = {};
+  function readParams() {
+    P.N = +$('N').value;
+    P.k = Math.min(+$('K').value, P.N - 1);
+    P.p = P.k / (P.N - 1);
+    P.seed = Math.floor(Math.abs(+$('seed').value || 0));
+
+    P.disease = document.querySelector('input[name=disease]:checked').value;
+    P.diseaseName = DISEASES[P.disease].name;
+    if (P.disease === 'custom') {
+      P.beta = +$('beta').value / 100;
+      P.dI = +$('dI').value;
+      P.dE = [+$('dE0').value, +$('dE1').value, +$('dE2').value];
+    } else {
+      const d = DISEASES[P.disease];
+      P.beta = d.beta / 100; P.dI = d.dI; P.dE = d.dE.slice();
+    }
+    P.eInf = $('eInf').checked;
+    P.randDur = $('randDur').checked;
+
+    let kid = +$('kid').value, teen = +$('teen').value;
+    if (kid + teen > 100) { teen = 100 - kid; $('teen').value = teen; }
+    P.share = [kid / 100, teen / 100, (100 - kid - teen) / 100];
+
+    P.T = +$('T').value;
+    if (!validISO($('startDate').value)) $('startDate').value = todayISO();
+    P.start = $('startDate').value;
+    $('I0').max = Math.min(100, P.N);
+    P.I0 = Math.min(+$('I0').value, P.N);
+    P.showChains = $('showChains').checked;
+    P.speed = +$('speed').value;
+
+    // labels
+    $('oN').textContent = P.N;
+    $('oK').textContent = (+$('K').value).toFixed(1);
+    $('hintP').textContent = `p = k / (N−1) = ${P.p.toFixed(4)}` + (P.k < 1 ? ' · ниже порога k = 1: сеть распадается на острова' : '');
+    $('oBeta').textContent = Math.round(+$('beta').value) + '%';
+    $('oDI').textContent = days(+$('dI').value);
+    [0, 1, 2].forEach(a => { const v = +$('dE' + a).value; $('oDE' + a).textContent = v === 0 ? 'нет' : days(v); });
+    $('customBox').hidden = P.disease !== 'custom';
+    $('presetInfo').hidden = P.disease === 'custom';
+    $('presetInfo').innerHTML =
+      `β = <b>${Math.round(P.beta * 100)}%</b> за день контакта · заразен <b>${days(P.dI)}</b><br>` +
+      `Инкубация: дети <b>${P.dE[0]}</b> · подростки <b>${P.dE[1]}</b> · взрослые <b>${P.dE[2]}</b> дн.`;
+    $('oKid').textContent = kid + '%';
+    $('oTeen').textContent = teen + '%';
+    $('oAdult').textContent = (100 - kid - teen) + '%';
+    $('ageMix').innerHTML = P.share.map((s, a) => `<div style="width:${s * 100}%;background:${AGE_COL[a]}"></div>`).join('');
+    $('oT').textContent = days(P.T);
+    $('oI0').textContent = P.I0;
+    $('oSpeed').textContent = P.speed + ' дн/с';
+  }
+
+  // ================= graph & population =================
+  const G = { n: 0, nodes: [], links: [], adj: [], deg: null, age: null, ageCount: [0, 0, 0], comp: 0, iso: 0 };
+  let initialSet = [];
+  let forceSim = null, fitted = false;
+
+  function assignAges() {
+    const n = G.n, idx = d3.range(n);
+    d3.shuffler(mulberry32(P.seed * 31 + 5))(idx);
+    const nk = Math.round(n * P.share[0]), nt = Math.min(n - nk, Math.round(n * P.share[1]));
+    G.age = new Int8Array(n).fill(2);
+    for (let j = 0; j < nk; j++) G.age[idx[j]] = 0;
+    for (let j = nk; j < nk + nt; j++) G.age[idx[j]] = 1;
+    G.ageCount = [0, 0, 0];
+    for (let i = 0; i < n; i++) G.ageCount[G.age[i]]++;
+  }
+
+  function pickInitial() {
+    const rng = mulberry32(P.seed * 7919 + 17);
+    const pool = d3.range(G.n).filter(i => G.deg[i] > 0);
+    const src = pool.length >= P.I0 ? pool : d3.range(G.n);
+    d3.shuffler(rng)(src);
+    initialSet = src.slice(0, Math.min(P.I0, src.length));
+  }
+
+  function buildGraph() {
+    const n = P.N, p = P.p, rng = mulberry32(P.seed);
+    const adj = Array.from({ length: n }, () => []);
+    const links = [];
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++)
+        if (rng() < p) { links.push({ source: i, target: j }); adj[i].push(j); adj[j].push(i); }
+
+    const R0 = Math.sqrt(n) * 14;
+    const nodes = d3.range(n).map(i => {
+      const a = i * 2.39996, r = R0 * Math.sqrt((i + 0.5) / n);
+      return { id: i, x: r * Math.cos(a), y: r * Math.sin(a) };
+    });
+    Object.assign(G, { n, nodes, links, adj, deg: adj.map(a => a.length) });
+
+    const seen = new Int8Array(n); let best = 0;
+    for (let s = 0; s < n; s++) {
+      if (seen[s]) continue;
+      let size = 0; const stack = [s]; seen[s] = 1;
+      while (stack.length) { const v = stack.pop(); size++; for (const w of adj[v]) if (!seen[w]) { seen[w] = 1; stack.push(w); } }
+      best = Math.max(best, size);
+    }
+    G.comp = best;
+    G.iso = G.deg.filter(d => d === 0).length;
+
+    assignAges();
+    pickInitial();
+
+    if (TREE.on) setTreeButton(false);
+    morph = null;
+    if (forceSim) forceSim.stop();
+    const meanDeg = Math.max(1, 2 * links.length / n);
+    forceSim = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).distance(26).strength(Math.min(0.7, 1.2 / meanDeg)))
+      .force('charge', d3.forceManyBody().strength(-38).distanceMax(400))
+      .force('x', d3.forceX(0).strength(0.05))
+      .force('y', d3.forceY(0).strength(0.05))
+      .force('collide', d3.forceCollide(nodeR() + 1.5))
+      .alphaDecay(0.03)
+      .on('tick', requestDraw)
+      .on('end', () => { if (!fitted) { fitted = true; fitView(true); } });
+    fitted = false;
+    fitView(false);
+    resetSim();
+  }
+
+  // ================= simulation core =================
+  // A simulation is a plain object; the animated run and the headless runs (saved forecasts) share this code.
+  const simSeed = r => (((P.seed ^ 0x9e3779b9) >>> 0) + r * 0x6D2B79F5) >>> 0;
+
+  function dur(s, D) {
+    if (!P.randDur || D <= 1) return D;
+    const q = 1 / D;
+    return Math.max(1, Math.ceil(Math.log(1 - s.rng()) / Math.log(1 - q)));
+  }
+
+  function createSim(seed) {
+    const n = G.n;
+    const s = {
+      rng: mulberry32(seed), day: 0, ended: null,
+      state: new Int8Array(n), timer: new Int16Array(n),
+      infBy: new Int16Array(n).fill(-1), infDay: new Int16Array(n).fill(-1),
+      hist: [[], [], [], []], newInf: [], peak: { v: 0, day: 0 },
+    };
+    for (const i of initialSet) { s.state[i] = I_; s.timer[i] = dur(s, P.dI); s.infDay[i] = 0; }
+    record(s, initialSet.length);
+    return s;
+  }
+
+  function counts(s) {
+    const c = [0, 0, 0, 0];
+    for (let i = 0; i < G.n; i++) c[s.state[i]]++;
+    return c;
+  }
+
+  function record(s, newCount) {
+    const c = counts(s);
+    for (let k = 0; k < 4; k++) s.hist[k][s.day] = c[k];
+    s.newInf[s.day] = newCount;
+    if (c[I_] > s.peak.v) s.peak = { v: c[I_], day: s.day };
+    return c;
+  }
+
+  function simStep(s) {
+    if (s.day >= P.T) return false;
+    const st = s.state.slice(), n = G.n, rng = s.rng;
+    const nextDay = s.day + 1;
+    let newCount = 0;
+    for (let i = 0; i < n; i++) {
+      const v = st[i];
+      if (v === S_) {
+        let m = 0;
+        for (const j of G.adj[i]) if (st[j] === I_ || (P.eInf && st[j] === E_)) m++;
+        if (m && rng() < 1 - Math.pow(1 - P.beta, m)) {
+          let k = Math.floor(rng() * m);
+          for (const j of G.adj[i]) if (st[j] === I_ || (P.eInf && st[j] === E_)) { if (k-- === 0) { s.infBy[i] = j; break; } }
+          s.infDay[i] = nextDay; newCount++;
+          const de = P.dE[G.age[i]];
+          if (de > 0) { s.state[i] = E_; s.timer[i] = dur(s, de); }
+          else { s.state[i] = I_; s.timer[i] = dur(s, P.dI); }
+        }
+      } else if (v === E_) {
+        if (--s.timer[i] <= 0) { s.state[i] = I_; s.timer[i] = dur(s, P.dI); }
+      } else if (v === I_) {
+        if (--s.timer[i] <= 0) s.state[i] = R_;
+      }
+    }
+    s.day = nextDay;
+    const c = record(s, newCount);
+    if (c[E_] + c[I_] === 0) {
+      s.ended = s.day;
+      while (s.day < P.T) { s.day++; record(s, 0); }
+    }
+    return true;
+  }
+
+  function ageAttack(s) {
+    const inf = [0, 0, 0];
+    for (let i = 0; i < G.n; i++) if (s.infDay[i] >= 0) inf[G.age[i]]++;
+    return inf.map((v, a) => G.ageCount[a] ? v / G.ageCount[a] : null);
+  }
+
+  function estimateR0() {
+    const kReal = 2 * G.links.length / G.n;
+    const meanDE = P.share.reduce((acc, sh, a) => acc + sh * P.dE[a], 0);
+    const D = P.dI + (P.eInf ? meanDE : 0);
+    return (1 - Math.pow(1 - P.beta, D)) * kReal;
+  }
+
+  // ================= animated run =================
+  let Sim = null;
+  function resetSim() {
+    stop();
+    Sim = createSim(simSeed(0));
+    Sim.peakShown = false;
+    hideCaption();
+    visReset();
+    if (TREE.on) { TREE.to = treeLayout(); morphTo(TREE.to, 600); }
+    initChart();
+    refresh();
+  }
+
+  let playing = false, rafId = 0, lastT = 0, acc = 0;
+  const dayInterval = () => 1000 / (DEMO.on ? Math.min(P.speed, 2.5) : P.speed);
+  function play() {
+    if (Sim.day >= P.T) return;
+    playing = true; lastT = performance.now(); acc = 1e9;
+    $('btnPlay').textContent = '❚❚ Пауза';
+    $('live').classList.add('on');
+    rafId = requestAnimationFrame(loop);
+  }
+  function stop() {
+    playing = false; cancelAnimationFrame(rafId);
+    $('btnPlay').textContent = '▶ Старт';
+    $('live').classList.remove('on');
+  }
+  function loop(t) {
+    if (!playing) return;
+    acc += t - lastT; lastT = t;
+    const interval = dayInterval();
+    if (acc >= interval) {
+      acc = Math.min(acc - interval, interval);
+      advance(interval);
+      if (Sim.day >= P.T) { stop(); refresh(); return; }
+    }
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // one day forward for the animated run, with all visual side effects
+  function advance(interval) {
+    if (Sim.day >= P.T) return;
+    simStep(Sim);
+    const newCount = Sim.newInf[Sim.day] || 0;
+    visSync(interval);
+    if (TREE.on) { TREE.to = treeLayout(); morphTo(TREE.to, Math.min(800, interval * 0.85)); }
+    demoOnDay(newCount);
+    peakCheck();
+    refresh();
+  }
+
+  // ================= current-run chart =================
+  let chart = null;
+  Chart.defaults.color = '#8b95a3';
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+
+  // "wave": what matters day to day — the sick, the incubating and new cases per day, scaled to the wave itself;
+  // "all": the four groups as plain lines on the whole-population scale
+  let chartMode = 'wave';
+  const chartMarkers = {
+    id: 'markers',
+    afterDatasetsDraw(c) {
+      if (!Sim) return;
+      const x = c.ctx, a = c.chartArea, sx = c.scales.x, sy = c.scales.y;
+      x.save();
+      if (Sim.day > 0 && Sim.day < P.T) {          // today
+        const px = sx.getPixelForValue(Sim.day);
+        x.strokeStyle = 'rgba(230,233,238,.28)'; x.lineWidth = 1;
+        x.beginPath(); x.moveTo(px, a.top); x.lineTo(px, a.bottom); x.stroke();
+      }
+      const pk = Sim.peak;
+      if (pk.v > 0 && Sim.day > pk.day) {          // peak, once it is behind us
+        const px = sx.getPixelForValue(pk.day), py = sy.getPixelForValue(pk.v);
+        x.fillStyle = '#161b22'; x.beginPath(); x.arc(px, py, 6, 0, 2 * Math.PI); x.fill();
+        x.fillStyle = COL[I_]; x.beginPath(); x.arc(px, py, 4, 0, 2 * Math.PI); x.fill();
+        const label = `пик ${pk.v} · ${fmtShort(addDays(P.start, pk.day))}`;
+        x.font = '600 11px ' + Chart.defaults.font.family;
+        const w = x.measureText(label).width;
+        let tx = px - w / 2; tx = Math.max(a.left + 2, Math.min(a.right - w - 2, tx));
+        const ty = Math.max(a.top + 11, py - 10);
+        x.fillStyle = 'rgba(22,27,34,.85)';
+        x.beginPath(); x.roundRect(tx - 4, ty - 11, w + 8, 15, 4); x.fill();
+        x.fillStyle = '#e6e9ee'; x.fillText(label, tx, ty);
+      }
+      x.restore();
+    },
+  };
+
+  function chartDatasets() {
+    const line = (key, label, color, extra = {}) => ({
+      type: 'line', label, data: [], _key: key, borderColor: color, backgroundColor: color,
+      borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.25, fill: false, ...extra,
+    });
+    if (chartMode === 'wave') return [
+      line('I', 'Больные', COL[I_], { fill: 'origin', backgroundColor: 'rgba(229,72,77,.14)', order: 1 }),
+      line('E', 'Инкубация', COL[E_], { order: 2 }),
+      { type: 'bar', label: 'Новые за день', data: [], _key: 'new', backgroundColor: 'rgba(139,149,163,.45)',
+        borderRadius: 2, barPercentage: 0.8, categoryPercentage: 1, order: 3 },
+    ];
+    return [line('S', 'Здоровые', COL[S_]), line('E', 'Инкубация', COL[E_]), line('I', 'Больные', COL[I_]), line('R', 'Выздоровели', COL[R_])];
+  }
+
+  function initChart() {
+    const labels = d3.range(P.T + 1).map(d => fmtShort(addDays(P.start, d)));
+    const datasets = chartDatasets();
+    if (chart) {
+      chart.data.labels = labels; chart.data.datasets = datasets;
+      chart.options.scales.y.max = chartMode === 'all' ? G.n : undefined;
+      chart.update('none');
+      return;
+    }
+    chart = new Chart($('chart'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        animation: false, responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } },
+          y: { beginAtZero: true, grace: '12%', max: chartMode === 'all' ? G.n : undefined,
+               grid: { color: 'rgba(255,255,255,.06)' }, border: { display: false }, ticks: { maxTicksLimit: 5, precision: 0 } },
+        },
+        plugins: {
+          legend: { position: 'bottom', labels: {
+            boxWidth: 10, boxHeight: 10, font: { size: 11 }, padding: 10,
+            // solid swatches in the series colour (the "sick" area fill is translucent)
+            generateLabels: c => Chart.defaults.plugins.legend.labels.generateLabels(c).map(l => {
+              const ds = c.data.datasets[l.datasetIndex];
+              const col = ds.type === 'bar' ? ds.backgroundColor : ds.borderColor;
+              return Object.assign(l, { fillStyle: col, strokeStyle: col, lineWidth: 0 });
+            }),
+          } },
+          tooltip: {
+            callbacks: {
+              title: items => `${fmtDate(addDays(P.start, items[0].dataIndex))} · день ${items[0].dataIndex}`,
+              label: it => ` ${it.dataset.label}: ${it.raw} (${pct(it.raw, G.n)})`,
+            },
+          },
+        },
+      },
+      plugins: [chartMarkers],
+    });
+  }
+  function updateChart() {
+    for (const ds of chart.data.datasets) {
+      const src = ds._key === 'new' ? Sim.newInf : Sim.hist[{ S: 0, E: 1, I: 2, R: 3 }[ds._key]];
+      for (let d = 0; d <= P.T; d++) ds.data[d] = d < src.length ? src[d] : null;
+    }
+    chart.update('none');
+  }
+
+  // ================= stats =================
+  function refresh() {
+    const n = G.n, c = counts(Sim), total = n - c[S_];
+    $('dayLabel').innerHTML = `День ${Sim.day} из ${P.T}<small>${fmtDate(addDays(P.start, Sim.day))}</small>`;
+    $('progress').style.width = (100 * Sim.day / P.T) + '%';
+    ['S', 'E', 'I', 'R'].forEach((k, s) => {
+      COUNTERS.target[s] = c[s];
+      $('p' + k).textContent = Math.round(100 * c[s] / n) + '%';
+      const seg = $('seg' + k);
+      seg.style.width = (100 * c[s] / n) + '%';
+      seg.style.display = c[s] ? '' : 'none';
+    });
+    if (!VIS.fx) setCountersNow();
+
+    let status;
+    if (Sim.ended !== null) status = `Эпидемия закончилась ${fmtDate(addDays(P.start, Sim.ended))}`;
+    else if (Sim.day >= P.T) status = 'Период завершён';
+    else if (Sim.day === 0) status = 'Готово к запуску';
+    else status = playing ? 'Идёт симуляция…' : 'Пауза';
+    $('status').textContent = status;
+
+    // headline numbers
+    const pk = Sim.peak;
+    $('kPeak').textContent = Sim.day > 0 ? pk.v : '—';
+    $('kPeakSub').textContent = Sim.day > 0 ? `${pct(pk.v, n)} · ${fmtShort(addDays(P.start, pk.day))}` : 'ещё не было';
+    $('kAttack').textContent = Math.round(100 * total / n) + '%';
+    $('kAttackSub').textContent = `${total} из ${n}`;
+    const r0 = estimateR0();
+    $('kR0').textContent = r0.toFixed(1);
+    const [r0col, r0txt] = r0 > 1.05 ? [COL[I_], 'вспышка вероятна'] : r0 >= 0.95 ? [COL[E_], 'на грани'] : [COL[R_], 'скорее затухнет'];
+    $('kR0Sub').innerHTML = `<i class="dot" style="background:${r0col}"></i>${r0txt}`;
+
+    // by age
+    const att = ageAttack(Sim), names = ['Дети', 'Подростки', 'Взрослые'];
+    $('ageBars').innerHTML = names.map((nm, a) => {
+      const v = att[a], w = v == null ? 0 : Math.round(v * 100);
+      return `<div class="ab"><span class="nm">${nm} · ${G.ageCount[a]}</span><span class="track"><span class="fill" style="display:block;width:${w}%"></span></span><span class="v">${v == null ? '—' : w + '%'}</span></div>`;
+    }).join('');
+
+    // network details
+    const kReal = 2 * G.links.length / n;
+    $('mEdges').textContent = `${G.links.length} / ${kReal.toFixed(2)}`;
+    $('mComp').textContent = `${G.comp} (${pct(G.comp, n)})`;
+    $('mIso').textContent = G.iso;
+    const note = $('r0Note');
+    if (r0 > 1.05) note.innerHTML = `<b style="color:var(--I)">R₀ ≈ ${r0.toFixed(2)} &gt; 1</b>: каждый больной в среднем заражает больше одного человека — вспышка, скорее всего, охватит заметную часть сети (но может и затухнуть случайно в первые дни).`;
+    else if (r0 >= 0.95) note.innerHTML = `<b style="color:var(--E)">R₀ ≈ ${r0.toFixed(2)} ≈ 1</b>: пограничный режим, исход сильно зависит от случая.`;
+    else note.innerHTML = `<b style="color:var(--R)">R₀ ≈ ${r0.toFixed(2)} &lt; 1</b>: каждый больной заражает меньше одного человека — эпидемия, скорее всего, быстро затухнет.`;
+
+    $('btnStep').disabled = Sim.day >= P.T;
+    $('btnPlay').disabled = Sim.day >= P.T;
+    updateChart();
+    if (CM.current && forecasts.length) updateCompareChart();
+    requestDraw();
+  }
+
+  // ================= drawing & effects =================
+  const canvas = $('graph'), ctx = canvas.getContext('2d');
+  let W = 0, H = 0, dpr = 1, transform = d3.zoomIdentity, hover = -1, drawPending = false;
+  const nodeR = () => Math.max(3, Math.min(7, 60 / Math.sqrt(G.n || 100)));
+  const RGB = COL.map(h => [1, 3, 5].map(o => parseInt(h.slice(o, o + 2), 16)));
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // per-node visual state: colour transitions, sparks travelling along edges, ripples
+  const VIS = { fx: !reduceMotion, shown: null, from: null, to: null, t0: null, dur: null, busyUntil: 0, particles: [], ripples: [] };
+  $('fx').checked = VIS.fx;
+
+  function visReset() {
+    const n = G.n;
+    VIS.shown = Sim.state.slice();
+    VIS.from = new Float32Array(n * 3); VIS.to = new Float32Array(n * 3);
+    VIS.t0 = new Float64Array(n); VIS.dur = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const c = RGB[Sim.state[i]]; for (let k = 0; k < 3; k++) VIS.from[i * 3 + k] = VIS.to[i * 3 + k] = c[k]; }
+    VIS.particles = []; VIS.ripples = []; VIS.busyUntil = 0;
+  }
+  function colorAt(i, now, out) {
+    const t0 = VIS.t0[i], d = VIS.dur[i];
+    let u = now <= t0 ? 0 : d > 0 ? (now - t0) / d : 1;
+    if (u > 1) u = 1;
+    for (let k = 0; k < 3; k++) out[k] = VIS.from[i * 3 + k] + (VIS.to[i * 3 + k] - VIS.from[i * 3 + k]) * u;
+    return out;
+  }
+  const tmpC = [0, 0, 0];
+  function visSync(interval) {
+    const now = performance.now();
+    const travel = VIS.fx ? Math.min(900, interval * 0.75) : 0;
+    const fade = VIS.fx ? 380 : 0;
+    for (let i = 0; i < G.n; i++) {
+      const st = Sim.state[i];
+      if (st === VIS.shown[i]) continue;
+      const newly = VIS.shown[i] === S_;
+      let delay = 0;
+      if (newly && VIS.fx && Sim.infBy[i] >= 0) { VIS.particles.push({ a: Sim.infBy[i], b: i, t0: now, dur: travel }); delay = travel; }
+      colorAt(i, now, tmpC);
+      for (let k = 0; k < 3; k++) { VIS.from[i * 3 + k] = tmpC[k]; VIS.to[i * 3 + k] = RGB[st][k]; }
+      VIS.t0[i] = now + delay; VIS.dur[i] = fade;
+      VIS.busyUntil = Math.max(VIS.busyUntil, now + delay + fade);
+      if (newly && VIS.fx) VIS.ripples.push({ i, t0: now + delay, c: RGB[st] });
+      VIS.shown[i] = st;
+    }
+  }
+
+  // soft glow sprites (drawn with additive blending)
+  function sprite(r, g, b, a0) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d'), grd = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, `rgba(${r},${g},${b},${a0})`);
+    grd.addColorStop(0.35, `rgba(${r},${g},${b},${a0 * 0.4})`);
+    grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    x.fillStyle = grd; x.fillRect(0, 0, 64, 64);
+    return c;
+  }
+  const GLOW_I = sprite(255, 80, 85, 0.85), GLOW_E = sprite(242, 169, 59, 0.5), GLOW_SPARK = sprite(255, 214, 150, 1);
+
+  // animated counters
+  const COUNTERS = { target: [0, 0, 0, 0], shown: [0, 0, 0, 0] };
+  const CNT_IDS = ['cS', 'cE', 'cI', 'cR'];
+  function setCountersNow() { for (let s = 0; s < 4; s++) { COUNTERS.shown[s] = COUNTERS.target[s]; $(CNT_IDS[s]).textContent = COUNTERS.target[s]; } }
+  function tweenCounters() {
+    let moving = false;
+    for (let s = 0; s < 4; s++) {
+      const t = COUNTERS.target[s], v = COUNTERS.shown[s];
+      if (v === t) continue;
+      const nv = Math.abs(t - v) < 0.6 ? t : v + (t - v) * 0.18;
+      COUNTERS.shown[s] = nv; moving = true;
+      $(CNT_IDS[s]).textContent = Math.round(nv);
+    }
+    return moving;
+  }
+
+  // node position morphing (network ⇄ infection tree)
+  let morph = null;
+  function morphTo(targets, dur) {
+    morph = { t0: performance.now(), dur: Math.max(1, dur), from: G.nodes.map(d => [d.x, d.y]), to: targets };
+    requestDraw();
+  }
+  function stepMorph(now) {
+    if (!morph) return false;
+    const u = Math.min(1, (now - morph.t0) / morph.dur), e = d3.easeCubicInOut(u);
+    G.nodes.forEach((d, i) => {
+      const a = morph.from[i], b = morph.to[i];
+      d.x = a[0] + (b[0] - a[0]) * e; d.y = a[1] + (b[1] - a[1]) * e;
+    });
+    if (u >= 1) morph = null;
+    return true;
+  }
+
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    dpr = window.devicePixelRatio || 1;
+    W = r.width; H = r.height;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    requestDraw();
+  }
+  function requestDraw() {
+    if (drawPending) return;
+    drawPending = true;
+    requestAnimationFrame(draw);
+  }
+  function addShape(x, y, r, age) {
+    if (age === 2) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 2 * Math.PI); }
+    else if (age === 1) {
+      const a = r * 1.3; ctx.moveTo(x, y - a); ctx.lineTo(x + a, y); ctx.lineTo(x, y + a); ctx.lineTo(x - a, y); ctx.closePath();
+    } else { const a = r * 0.9; ctx.rect(x - a, y - a, 2 * a, 2 * a); }
+  }
+
+  function draw() {
+    drawPending = false;
+    if (!Sim || !VIS.shown) return;
+    const now = performance.now();
+    const morphing = stepMorph(now);
+    const counting = VIS.fx ? tweenCounters() : false;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.translate(transform.x, transform.y);
+    ctx.scale(transform.k, transform.k);
+    const k = transform.k, sk = Math.sqrt(k), nodes = G.nodes, r = Math.max(nodeR(), 2.6 / k);
+    const tree = TREE.on, n = G.n;
+    const arrived = i => now >= VIS.t0[i];
+
+    // generation rings of the infection tree
+    if (tree && TREE.maxDepth > 0) {
+      ctx.strokeStyle = 'rgba(122,162,247,.14)'; ctx.lineWidth = 1 / k;
+      ctx.fillStyle = 'rgba(139,149,163,.75)'; ctx.font = `${11 / k}px system-ui, sans-serif`; ctx.textAlign = 'center';
+      for (let d = 1; d <= TREE.maxDepth; d++) {
+        const rad = d * TREE.ring;
+        ctx.beginPath(); ctx.arc(0, 0, rad, 0, 2 * Math.PI); ctx.stroke();
+        ctx.fillText(`поколение ${TREE.single ? d : d - 1}`, 0, -rad - 4 / k);
+      }
+    }
+
+    // contact edges
+    if (!tree) {
+      ctx.beginPath();
+      for (const l of G.links) { ctx.moveTo(l.source.x, l.source.y); ctx.lineTo(l.target.x, l.target.y); }
+      ctx.strokeStyle = EDGE_COL; ctx.lineWidth = 0.8 / sk; ctx.stroke();
+      if (hover >= 0) {
+        ctx.beginPath();
+        const h = nodes[hover];
+        for (const j of G.adj[hover]) { ctx.moveTo(h.x, h.y); ctx.lineTo(nodes[j].x, nodes[j].y); }
+        ctx.strokeStyle = 'rgba(122,162,247,.7)'; ctx.lineWidth = 1.4 / sk; ctx.stroke();
+      }
+    }
+
+    // transmission chains (only once the spark has arrived)
+    if (P.showChains || tree) {
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const b = Sim.infBy[i];
+        if (b >= 0 && arrived(i)) { ctx.moveTo(nodes[b].x, nodes[b].y); ctx.lineTo(nodes[i].x, nodes[i].y); }
+      }
+      const big = n > 300;
+      ctx.strokeStyle = tree ? 'rgba(229,72,77,.55)' : big ? 'rgba(229,72,77,.5)' : 'rgba(229,72,77,.75)';
+      ctx.lineWidth = (tree ? 1.3 : big ? 1.1 : 1.8) / sk; ctx.stroke();
+    }
+
+    // glow under infectious / incubating people
+    if (VIS.fx) {
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < n; i++) {
+        const st = VIS.shown[i];
+        if ((st !== I_ && st !== E_) || !arrived(i)) continue;
+        const pulse = st === I_ ? 1 + 0.18 * Math.sin(now / 260 + i * 1.7) : 1;
+        const g = r * (st === I_ ? 4.2 : 3) * pulse;
+        ctx.drawImage(st === I_ ? GLOW_I : GLOW_E, nodes[i].x - g, nodes[i].y - g, 2 * g, 2 * g);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // people: settled ones batched by state, the rest drawn one by one with interpolated colour
+    const busy = [];
+    for (let s = 0; s < 4; s++) {
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        if (s === 0 && now < VIS.t0[i] + VIS.dur[i]) { busy.push(i); continue; }
+        if (VIS.shown[i] === s && now >= VIS.t0[i] + VIS.dur[i]) addShape(nodes[i].x, nodes[i].y, r, G.age[i]);
+      }
+      ctx.globalAlpha = tree && s === S_ ? 0.3 : 1;
+      ctx.fillStyle = COL[s]; ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    for (const i of busy) {
+      colorAt(i, now, tmpC);
+      ctx.beginPath(); addShape(nodes[i].x, nodes[i].y, r, G.age[i]);
+      ctx.fillStyle = `rgb(${tmpC[0] | 0},${tmpC[1] | 0},${tmpC[2] | 0})`; ctx.fill();
+    }
+
+    // patient zero rings
+    ctx.beginPath();
+    for (const i of initialSet) { ctx.moveTo(nodes[i].x + r + 3, nodes[i].y); ctx.arc(nodes[i].x, nodes[i].y, r + 3, 0, 2 * Math.PI); }
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 / sk; ctx.stroke();
+
+    // ripples where an infection lands
+    VIS.ripples = VIS.ripples.filter(rp => now - rp.t0 < 900);
+    for (const rp of VIS.ripples) {
+      const u = (now - rp.t0) / 900;
+      if (u < 0) continue;
+      const p = nodes[rp.i];
+      ctx.beginPath(); ctx.arc(p.x, p.y, r + (26 * d3.easeCubicOut(u)) / sk, 0, 2 * Math.PI);
+      ctx.strokeStyle = `rgba(${rp.c[0]},${rp.c[1]},${rp.c[2]},${(1 - u) * 0.9})`;
+      ctx.lineWidth = (2.4 * (1 - u) + 0.3) / sk; ctx.stroke();
+    }
+
+    // sparks travelling from the infector to the newly infected
+    VIS.particles = VIS.particles.filter(pt => now - pt.t0 < pt.dur);
+    if (VIS.particles.length) {
+      ctx.globalCompositeOperation = 'lighter';
+      for (const pt of VIS.particles) {
+        const u = Math.max(0, (now - pt.t0) / pt.dur), e = d3.easeCubicInOut(u), e0 = d3.easeCubicInOut(Math.max(0, u - 0.22));
+        const a = nodes[pt.a], b = nodes[pt.b];
+        const x = a.x + (b.x - a.x) * e, y = a.y + (b.y - a.y) * e;
+        const x0 = a.x + (b.x - a.x) * e0, y0 = a.y + (b.y - a.y) * e0;
+        const grd = ctx.createLinearGradient(x0, y0, x, y);
+        grd.addColorStop(0, 'rgba(255,170,90,0)'); grd.addColorStop(1, 'rgba(255,200,140,.95)');
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x, y);
+        ctx.strokeStyle = grd; ctx.lineWidth = 2.6 / sk; ctx.lineCap = 'round'; ctx.stroke();
+        const g = r * 2.6;
+        ctx.drawImage(GLOW_SPARK, x - g, y - g, 2 * g, 2 * g);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.lineCap = 'butt';
+    }
+
+    if (hover >= 0) {
+      ctx.beginPath(); ctx.arc(nodes[hover].x, nodes[hover].y, r + 4.5, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#7aa2f7'; ctx.lineWidth = 2 / sk; ctx.stroke();
+    }
+
+    const pulsing = VIS.fx && (Sim.hist[I_][Sim.day] > 0 || Sim.hist[E_][Sim.day] > 0);
+    if (morphing || counting || pulsing || VIS.particles.length || VIS.ripples.length || now < VIS.busyUntil) requestDraw();
+  }
+
+  // ================= infection tree =================
+  const TREE = { on: false, to: null, gen: null, maxDepth: 0, ring: 46, single: false };
+  function treeLayout() {
+    const n = G.n, single = initialSet.length === 1;
+    const rows = [{ id: 'root', parentId: null }];
+    const infected = [];
+    for (let i = 0; i < n; i++) if (Sim.infDay[i] >= 0) {
+      infected.push(i);
+      rows.push({ id: String(i), parentId: Sim.infBy[i] >= 0 ? String(Sim.infBy[i]) : 'root' });
+    }
+    const root = d3.stratify().id(d => d.id).parentId(d => d.parentId)(rows);
+    d3.tree().size([2 * Math.PI, 1]).separation((a, b) => (a.parent === b.parent ? 1 : 2) / Math.max(1, a.depth))(root);
+    const ring = TREE.ring, to = new Array(n), gen = new Int16Array(n).fill(-1);
+    let maxD = 0;
+    root.each(d => {
+      if (d.id === 'root') return;
+      const i = +d.id, dep = d.depth - (single ? 1 : 0), rad = dep * ring;
+      to[i] = [rad * Math.cos(d.x - Math.PI / 2), rad * Math.sin(d.x - Math.PI / 2)];
+      gen[i] = d.depth - 1;
+      maxD = Math.max(maxD, dep);
+    });
+    const rest = d3.range(n).filter(i => Sim.infDay[i] < 0);
+    const R = Math.max((maxD + 1.6) * ring, rest.length * 7 / (2 * Math.PI));
+    rest.forEach((i, j) => { const a = j / Math.max(1, rest.length) * 2 * Math.PI; to[i] = [R * Math.cos(a), R * Math.sin(a)]; });
+    TREE.gen = gen; TREE.maxDepth = maxD; TREE.single = single;
+    return to;
+  }
+  function setTreeButton(on) { TREE.on = on; $('btnTree').classList.toggle('on', on); }
+  function toggleTree(on) {
+    setTreeButton(on);
+    if (on) {
+      forceSim.stop();
+      TREE.to = treeLayout();
+      morphTo(TREE.to, 1400);
+      fitPoints(TREE.to, 1400);
+      if (TREE.maxDepth === 0) showCaption('Пока заражены только нулевые пациенты — запустите симуляцию, и дерево начнёт расти.', 3500);
+    } else {
+      morph = null;
+      fitted = false;
+      forceSim.alpha(0.9).restart();
+    }
+    requestDraw();
+  }
+
+  // ================= captions, demo mode, peak =================
+  let capT = 0;
+  function showCaption(html, ms = 4500) {
+    const c = $('caption');
+    c.innerHTML = html; c.classList.add('show');
+    clearTimeout(capT); capT = setTimeout(() => c.classList.remove('show'), ms);
+  }
+  function hideCaption() { clearTimeout(capT); $('caption').classList.remove('show'); }
+
+  function peakCheck() {
+    if (Sim.peakShown || !VIS.fx) return;
+    // a real peak: the wave is big enough, has clearly turned down and stayed down for 3 days
+    const cur = Sim.hist[I_][Sim.day], pk = Sim.peak, cum = G.n - Sim.hist[S_][Sim.day];
+    if (pk.v >= Math.max(4, 0.06 * G.n) && cum >= 0.15 * G.n && Sim.day - pk.day >= 3 && cur <= pk.v * 0.8) {
+      Sim.peakShown = true;
+      showCaption(`⚡ <b>Пик эпидемии пройден</b> ${fmtDate(addDays(P.start, pk.day))}: одновременно болели ${pk.v} человек (${pct(pk.v, G.n)}).`, 5000);
+    }
+  }
+
+  const DEMO = { on: false, flags: {}, timer: 0 };
+  function infectedPoints() {
+    const pts = [];
+    for (let i = 0; i < G.n; i++) if (Sim.infDay[i] >= 0) pts.push(TREE.on && TREE.to ? TREE.to[i] : [G.nodes[i].x, G.nodes[i].y]);
+    return pts;
+  }
+  function startDemo() {
+    stopDemo();
+    resetSim();
+    DEMO.on = true; DEMO.flags = {};
+    $('btnDemo').classList.add('on');
+    const pts = [];
+    for (const i of initialSet) { pts.push([G.nodes[i].x, G.nodes[i].y]); for (const j of G.adj[i]) pts.push([G.nodes[j].x, G.nodes[j].y]); }
+    fitPoints(pts, 1400, 3.2, 90);
+    showCaption(initialSet.length === 1
+      ? `${fmtDate(P.start)}. Всё начинается с <b>одного человека</b>…`
+      : `${fmtDate(P.start)}. Всё начинается с <b>${initialSet.length} заболевших</b>…`, 3200);
+    DEMO.timer = setTimeout(() => { if (DEMO.on) play(); }, 2000);
+  }
+  function stopDemo() {
+    clearTimeout(DEMO.timer);
+    if (DEMO.on) hideCaption();
+    DEMO.on = false;
+    $('btnDemo').classList.remove('on');
+  }
+  function demoOnDay(newCount) {
+    if (!DEMO.on) return;
+    const f = DEMO.flags, n = G.n, c = counts(Sim), cum = n - c[S_];
+    if (cum < 40 || Sim.day % 2 === 0) fitPoints(infectedPoints(), 900, 3.2, 80);
+    const date = fmtDate(addDays(P.start, Sim.day));
+    if (!f.first && newCount > 0) {
+      f.first = true;
+      let a = -1, b = -1;
+      for (let i = 0; i < n; i++) if (Sim.infDay[i] === Sim.day && Sim.infBy[i] >= 0) { a = Sim.infBy[i]; b = i; break; }
+      showCaption(`${date}: первая передача — <b>#${a}</b> заразил <b>#${b}</b>. Болезнь идёт только по знакомствам.`, 4500);
+    } else if (!f.ten && cum >= 0.1 * n) {
+      f.ten = true;
+      showCaption(`${date}: заражено уже <b>10% города</b>. Каждый больной заражает в среднем ≈ ${estimateR0().toFixed(1)} чел.`, 4500);
+    } else if (!f.half && cum >= 0.5 * n) {
+      f.half = true;
+      showCaption(`${date}: переболела или болеет <b>половина города</b>.`, 4000);
+    }
+    if (Sim.ended !== null || Sim.day >= P.T) {
+      const aa = ageAttack(Sim).map(v => v == null ? '—' : Math.round(v * 100) + '%');
+      const end = Sim.ended !== null ? `Эпидемия закончилась ${fmtDate(addDays(P.start, Sim.ended))}.` : `Прошло ${days(P.T)}.`;
+      setTimeout(() => {
+        showCaption(`${end} Итог: заразились <b>${cum} из ${n}</b> (${pct(cum, n)}).<br>Дети ${aa[0]} · подростки ${aa[1]} · взрослые ${aa[2]}`, 9000);
+        fitView(true);
+      }, 1200);
+      DEMO.on = false;
+      $('btnDemo').classList.remove('on');
+    }
+  }
+
+  // ================= zoom / pan / hover =================
+  const zoom = d3.zoom().scaleExtent([0.1, 12]).on('zoom', e => { transform = e.transform; hideTip(); requestDraw(); });
+  d3.select(canvas).call(zoom).on('dblclick.zoom', null);
+
+  function fitPoints(pts, dur = 500, maxScale = 4, pad = 40) {
+    if (!pts.length || !W) return;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [x, y] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    const s = Math.min(maxScale, (W - 2 * pad) / Math.max(1, x1 - x0), (H - 2 * pad - 50) / Math.max(1, y1 - y0));
+    const t = d3.zoomIdentity.translate(W / 2, H / 2 + 18).scale(s).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
+    const sel = d3.select(canvas);
+    (dur > 0 ? sel.transition().duration(dur).ease(d3.easeCubicInOut) : sel).call(zoom.transform, t);
+  }
+  function fitView(animate) {
+    if (!G.nodes.length) return;
+    fitPoints(G.nodes.map(d => [d.x, d.y]), animate ? 600 : 0);
+  }
+
+  function nodeAt(mx, my) {
+    const [x, y] = transform.invert([mx, my]);
+    const r = Math.max(nodeR(), 2.6 / transform.k) + 4 / transform.k;
+    let best = -1, bd = r * r;
+    for (let i = 0; i < G.n; i++) {
+      const dx = G.nodes[i].x - x, dy = G.nodes[i].y - y, d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+
+  const tip = $('tooltip');
+  function hideTip() { tip.style.display = 'none'; }
+  function showTip(i, mx, my) {
+    const s = Sim.state[i];
+    const lines = [
+      `<b>Человек #${i}</b> · ${AGE_ONE[G.age[i]]}`,
+      `Статус: <b style="color:${COL[s]}">${NAMES[s]}</b>`,
+      `Контактов: ${G.deg[i]} · инкубация ${P.dE[G.age[i]]} дн.`,
+    ];
+    if (s === E_ || s === I_) lines.push(`Осталось в статусе: ${days(Sim.timer[i])}`);
+    if (Sim.infDay[i] >= 0) lines.push(`Заражён в день ${Sim.infDay[i]}`);
+    if (Sim.infBy[i] >= 0) lines.push(`Заразил его: #${Sim.infBy[i]}`);
+    else if (initialSet.includes(i)) lines.push('Нулевой пациент');
+    let spread = 0; for (let j = 0; j < G.n; j++) if (Sim.infBy[j] === i) spread++;
+    if (spread) lines.push(`Заразил: ${spread} чел.`);
+    if (TREE.on && TREE.gen && TREE.gen[i] >= 0) lines.push(`Поколение заражения: ${TREE.gen[i]}`);
+    tip.innerHTML = lines.join('<br>');
+    tip.style.display = 'block';
+    const pw = canvas.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = Math.min(mx + 14, pw - tw - 6) + 'px';
+    tip.style.top = Math.max(6, my - th - 10) + 'px';
+  }
+
+  canvas.addEventListener('mousemove', e => {
+    const i = nodeAt(e.offsetX, e.offsetY);
+    if (i !== hover) { hover = i; requestDraw(); }
+    if (i >= 0) { showTip(i, e.offsetX, e.offsetY); canvas.style.cursor = 'pointer'; }
+    else { hideTip(); canvas.style.cursor = ''; }
+  });
+  canvas.addEventListener('mouseleave', () => { hover = -1; hideTip(); requestDraw(); });
+  canvas.addEventListener('click', e => {
+    const i = nodeAt(e.offsetX, e.offsetY);
+    if (i < 0) return;
+    if (Sim.day !== 0) { $('status').textContent = 'Нулевых пациентов можно менять только в день 0 (нажмите «Сброс»)'; return; }
+    const idx = initialSet.indexOf(i);
+    if (idx >= 0) { if (initialSet.length > 1) initialSet.splice(idx, 1); }
+    else if (initialSet.length < 100) initialSet.push(i);
+    $('I0').value = initialSet.length; $('oI0').textContent = initialSet.length;
+    resetSim();
+    showTip(i, e.offsetX, e.offsetY);
+  });
+
+  // ================= forecasts (comparison) =================
+  let forecasts = [];
+  const CM = { metric: 'I', pct: false, current: false, axis: 'date' };
+  const LS_KEY = 'epidemic.forecasts.v1';
+  try { const raw = localStorage.getItem(LS_KEY); if (raw) forecasts = JSON.parse(raw) || []; } catch (e) { forecasts = []; }
+  forecasts.forEach(f => { if (!validISO(f.p.start)) f.p.start = todayISO(); });
+  function persist() { try { localStorage.setItem(LS_KEY, JSON.stringify(forecasts)); } catch (e) { /* storage unavailable */ } }
+
+  function runOnce(r) {
+    const s = createSim(simSeed(r));
+    while (s.day < P.T) simStep(s);
+    return {
+      S: s.hist[S_], E: s.hist[E_], I: s.hist[I_], R: s.hist[R_],
+      new: s.newInf, cum: s.hist[S_].map(v => G.n - v),
+      peakV: s.peak.v, peakDay: s.peak.day, ended: s.ended, total: G.n - s.hist[S_][P.T], age: ageAttack(s),
+    };
+  }
+  function quantile(sorted, q) {
+    const pos = (sorted.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+  }
+  function stat(values) {
+    const v = values.filter(x => x != null).sort((a, b) => a - b);
+    if (!v.length) return null;
+    return { mean: d3.mean(v), lo: quantile(v, 0.1), hi: quantile(v, 0.9) };
+  }
+  function aggregate(runs) {
+    const series = {};
+    for (const key of ['S', 'E', 'I', 'R', 'new', 'cum']) {
+      const m = { mean: [], lo: [], hi: [] };
+      for (let d = 0; d <= P.T; d++) {
+        const st = stat(runs.map(r => r[key][d]));
+        m.mean.push(+st.mean.toFixed(2)); m.lo.push(+st.lo.toFixed(2)); m.hi.push(+st.hi.toFixed(2));
+      }
+      series[key] = m;
+    }
+    const ended = runs.filter(r => r.ended !== null);
+    return {
+      series,
+      sum: {
+        peakV: stat(runs.map(r => r.peakV)), peakDay: stat(runs.map(r => r.peakDay)), total: stat(runs.map(r => r.total)),
+        age: [0, 1, 2].map(a => stat(runs.map(r => r.age[a]))),
+        endedShare: ended.length / runs.length, endedDay: stat(ended.map(r => r.ended)),
+      },
+    };
+  }
+
+  async function saveForecast() {
+    if (forecasts.length >= MAX_FC) { toast(`Можно сохранить не больше ${MAX_FC} прогнозов — удалите лишний в разделе «Сравнение».`); return; }
+    const btn = $('btnSave'), runsN = $('mc').checked ? MC_RUNS : 1;
+    btn.disabled = true;
+    const runs = [];
+    for (let r = 0; r < runsN; r++) {
+      btn.textContent = runsN > 1 ? `Считаю… ${r + 1} / ${runsN}` : 'Считаю…';
+      runs.push(runOnce(r));
+      await new Promise(res => setTimeout(res, 0));
+    }
+    const { series, sum } = aggregate(runs);
+    const used = new Set(forecasts.map(f => f.color));
+    const color = FC_COLORS.find(c => !used.has(c)) || FC_COLORS[0];
+    const sharePct = P.share.map(s => Math.round(s * 100));
+    const f = {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      name: `${P.diseaseName} · ${sharePct.join('/')}`,
+      color, runs: runsN, series, sum,
+      p: {
+        diseaseName: P.diseaseName, beta: Math.round(P.beta * 100), dI: P.dI, dE: P.dE.slice(), share: sharePct,
+        N: P.N, k: +(+$('K').value).toFixed(1), seed: P.seed, I0: initialSet.length, eInf: P.eInf, randDur: P.randDur,
+        T: P.T, start: P.start, r0: +estimateR0().toFixed(2),
+        graphKey: [P.N, (+$('K').value).toFixed(1), P.seed, sharePct.join('/'), initialSet.slice().sort((a, b) => a - b).join(',')].join('|'),
+      },
+    };
+    forecasts.push(f);
+    persist();
+    btn.textContent = '💾 Сохранить прогноз для сравнения';
+    btn.disabled = false;
+    renderCompare();
+    animateCompare();
+    toast(`Сохранено: «${f.name}». Сравнение — внизу страницы.`);
+  }
+
+  // ----- comparison chart -----
+  let cmpChart = null, cmpStart = null;
+  function compareData(light) {
+    const m = CM.metric, asPct = CM.pct, byDate = CM.axis === 'date';
+    const showCur = CM.current && Sim;
+    // common X axis: calendar dates from the earliest start to the latest end, or days from start
+    const spans = forecasts.map(f => ({ start: f.p.start, T: f.p.T }));
+    if (showCur) spans.push({ start: P.start, T: P.T });
+    let labels;
+    if (byDate) {
+      cmpStart = spans.reduce((a, s) => s.start < a ? s.start : a, spans[0].start);
+      const end = spans.reduce((a, s) => { const e = addDays(s.start, s.T); return e > a ? e : a; }, cmpStart);
+      labels = d3.range(diffDays(cmpStart, end) + 1).map(i => fmtShort(addDays(cmpStart, i)));
+    } else {
+      cmpStart = null;
+      labels = d3.range(d3.max(spans, s => s.T) + 1);
+    }
+    const offOf = start => byDate ? diffDays(cmpStart, start) : 0;
+    const place = (arr, off) => off > 0 ? Array(off).fill(null).concat(arr) : arr;
+
+    const datasets = [];
+    for (const f of forecasts) {
+      const conv = v => v == null ? null : (asPct ? +(v / f.p.N * 100).toFixed(2) : v);
+      const s = f.series[m], off = offOf(f.p.start);
+      if (f.runs > 1) {
+        datasets.push({ label: '', data: place(s.lo.map(conv), off), borderWidth: 0, pointRadius: 0, fill: false, _band: true });
+        datasets.push({ label: '', data: place(s.hi.map(conv), off), borderWidth: 0, pointRadius: 0, backgroundColor: f.color + '33', fill: '-1', _band: true });
+      }
+      datasets.push({
+        label: f.name + (f.runs > 1 ? ` (среднее ${f.runs})` : ''), data: place(s.mean.map(conv), off),
+        borderColor: f.color, backgroundColor: f.color, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 4,
+        tension: 0.2, fill: false, _f: f, _off: off,
+      });
+    }
+    if (showCur) {
+      const src = m === 'new' ? Sim.newInf : m === 'cum' ? Sim.hist[S_].map(v => G.n - v) : Sim.hist[{ S: 0, E: 1, I: 2, R: 3 }[m]];
+      const off = offOf(P.start);
+      datasets.push({
+        label: 'Текущий прогон', data: place(src.map(v => asPct ? +(v / G.n * 100).toFixed(2) : v), off),
+        borderColor: light ? '#333' : '#e6e9ee', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, _cur: true, _off: off,
+      });
+    }
+    return { labels, datasets };
+  }
+
+  function compareOptions(light) {
+    const fg = light ? '#222' : '#8b95a3', grid = light ? '#e3e3e3' : 'rgba(255,255,255,.05)';
+    const fmt = v => v == null ? '—' : CM.pct ? v.toFixed(1) + '%' : (Number.isInteger(v) ? String(v) : v.toFixed(1));
+    return {
+      animation: false, responsive: !light, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { title: { display: true, text: CM.axis === 'date' ? 'дата' : 'день от начала прогноза', color: fg }, ticks: { color: fg, maxTicksLimit: 16 }, grid: { color: grid } },
+        y: { min: 0, title: { display: true, text: CM.pct ? '% населения' : 'человек', color: fg }, ticks: { color: fg }, grid: { color: grid } },
+      },
+      plugins: {
+        title: { display: light, text: 'Сравнение прогнозов. ' + METRIC_NAMES[CM.metric] + (CM.pct ? ', % населения' : ''), color: '#111', font: { size: 20, weight: '600' }, padding: { bottom: 12 } },
+        legend: { position: 'bottom', labels: { color: fg, boxWidth: 12, boxHeight: 12, font: { size: light ? 15 : 12 }, filter: (it, data) => !data.datasets[it.datasetIndex]._band } },
+        tooltip: {
+          enabled: !light,
+          filter: it => !it.dataset._band,
+          callbacks: {
+            title: items => cmpStart ? fmtDate(addDays(cmpStart, items[0].dataIndex)) : 'День ' + items[0].label,
+            label: it => {
+              const f = it.dataset._f, day = it.dataIndex - (it.dataset._off || 0);
+              let txt = ` ${it.dataset.label}: ${fmt(it.raw)}`;
+              if (cmpStart) txt += ` · день ${day}`;
+              if (f && f.runs > 1) {
+                const conv = v => CM.pct ? v / f.p.N * 100 : v;
+                const lo = f.series[CM.metric].lo[day], hi = f.series[CM.metric].hi[day];
+                if (lo != null) txt += `  (разброс ${fmt(+conv(lo).toFixed(1))}–${fmt(+conv(hi).toFixed(1))})`;
+              }
+              return txt;
+            },
+            footer: items => {
+              const main = items.filter(i => i.dataset._f);
+              if (main.length < 2 || main[0].raw == null) return '';
+              const base = main[0];
+              return main.slice(1).filter(i => i.raw != null).map(i => {
+                const d = i.raw - base.raw;
+                return `Разница «${i.dataset._f.name}» − «${base.dataset._f.name}»: ${d > 0 ? '+' : ''}${fmt(+d.toFixed(2))}`;
+              });
+            },
+          },
+        },
+      },
+    };
+  }
+
+  function updateCompareChart() {
+    const data = compareData(false);
+    if (!cmpChart) {
+      cmpChart = new Chart($('cmpChart'), { type: 'line', data, options: compareOptions(false) });
+    } else {
+      cmpChart.data = data;
+      cmpChart.options = compareOptions(false);
+      cmpChart.update('none');
+    }
+  }
+
+  // lines draw themselves from left to right (used right after a forecast is saved)
+  function animateCompare() {
+    if (!cmpChart || !VIS.fx) return;
+    const data = cmpChart.data, per = 1600 / Math.max(1, data.labels.length);
+    const prevY = c => c.index === 0
+      ? c.chart.scales.y.getPixelForValue(0)
+      : c.chart.getDatasetMeta(c.datasetIndex).data[c.index - 1].getProps(['y'], true).y;
+    const delay = key => c => { if (c.type !== 'data' || c[key]) return 0; c[key] = true; return c.index * per; };
+    cmpChart.destroy();
+    cmpChart = new Chart($('cmpChart'), {
+      type: 'line', data,
+      options: Object.assign(compareOptions(false), {
+        animation: {
+          x: { type: 'number', easing: 'linear', duration: per, from: NaN, delay: delay('xStarted') },
+          y: { type: 'number', easing: 'linear', duration: per, from: prevY, delay: delay('yStarted') },
+        },
+      }),
+    });
+    setTimeout(() => { if (cmpChart) cmpChart.options.animation = false; }, 2000);
+  }
+
+  // ----- comparison table -----
+  const fmtStat = (st, digits = 0, suffix = '') => {
+    if (!st) return '—';
+    const r = v => (+v).toFixed(digits);
+    return Math.abs(st.hi - st.lo) < 1e-9 ? r(st.mean) + suffix : `${r(st.mean)}${suffix} (${r(st.lo)}–${r(st.hi)})`;
+  };
+  const pctStat = st => st ? fmtStat({ mean: st.mean * 100, lo: st.lo * 100, hi: st.hi * 100 }, 0, '%') : '—';
+
+  function tableRows() {
+    const yes = b => b ? 'да' : 'нет';
+    const params = [
+      ['Болезнь', f => f.p.diseaseName],
+      ['β, % за день контакта', f => f.p.beta],
+      ['Заразен, дней', f => f.p.dI],
+      ['Инкубация: дети / подростки / взрослые, дн.', f => f.p.dE.join(' / ')],
+      ['Состав: дети / подростки / взрослые, %', f => f.p.share.join(' / ')],
+      ['Людей N', f => f.p.N],
+      ['Контактов k', f => f.p.k],
+      ['Seed', f => f.p.seed],
+      ['Начальных заражённых', f => f.p.I0],
+      ['Заразен в инкубации', f => yes(f.p.eInf)],
+      ['Случайные длительности', f => yes(f.p.randDur)],
+      ['Дата начала (день 0)', f => fmtDate(f.p.start)],
+      ['Период, дней', f => f.p.T],
+      ['Прогонов (усреднение)', f => f.runs],
+      ['R₀ (оценка)', f => f.p.r0.toFixed(2)],
+    ];
+    const results = [
+      ['Пик больных, чел.', f => fmtStat(f.sum.peakV)],
+      ['Пик больных, % населения', f => pctStat(f.sum.peakV && { mean: f.sum.peakV.mean / f.p.N, lo: f.sum.peakV.lo / f.p.N, hi: f.sum.peakV.hi / f.p.N })],
+      ['День пика', f => fmtStat(f.sum.peakDay)],
+      ['Дата пика', f => f.sum.peakDay ? fmtDate(addDays(f.p.start, Math.round(f.sum.peakDay.mean))) + (f.runs > 1 ? ' (в среднем)' : '') : '—'],
+      ['Всего заражено, чел.', f => fmtStat(f.sum.total)],
+      ['Всего заражено, % населения', f => pctStat({ mean: f.sum.total.mean / f.p.N, lo: f.sum.total.lo / f.p.N, hi: f.sum.total.hi / f.p.N })],
+      ['Заражено детей', f => pctStat(f.sum.age[0])],
+      ['Заражено подростков', f => pctStat(f.sum.age[1])],
+      ['Заражено взрослых', f => pctStat(f.sum.age[2])],
+      ['Эпидемия закончилась', f => {
+        const when = st => `${fmtDate(addDays(f.p.start, Math.round(st.mean)))} (день ${Math.round(st.mean)})`;
+        return f.runs === 1
+          ? (f.sum.endedShare ? when(f.sum.endedDay) : 'нет, шла до конца периода')
+          : `в ${Math.round(f.sum.endedShare * 100)}% прогонов` + (f.sum.endedDay ? `, в среднем ${when(f.sum.endedDay)}` : '');
+      }],
+    ];
+    return { params, results };
+  }
+
+  function renderTable() {
+    const { params, results } = tableRows();
+    const head = `<thead><tr><th></th>${forecasts.map(f => `<th><span style="color:${f.color}">■</span> ${esc(f.name)}</th>`).join('')}</tr></thead>`;
+    const row = ([label, fn], markDiff) => {
+      const vals = forecasts.map(f => String(fn(f)));
+      const diff = markDiff && forecasts.length > 1 && new Set(vals).size > 1;
+      return `<tr class="${diff ? 'diff' : ''}"><th>${label}</th>${vals.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`;
+    };
+    const span = forecasts.length + 1;
+    $('cmpTable').innerHTML = head + '<tbody>' +
+      `<tr class="section"><th colspan="${span}">Параметры (отличающиеся выделены)</th></tr>` +
+      params.map(r => row(r, true)).join('') +
+      `<tr class="section"><th colspan="${span}">Результаты</th></tr>` +
+      results.map(r => row(r, false)).join('') + '</tbody>';
+  }
+
+  function renderList() {
+    $('fcList').innerHTML = forecasts.map(f => `
+      <div class="fc" data-id="${f.id}">
+        <div class="fc-top">
+          <span class="sw" style="background:${f.color}"></span>
+          <input type="text" value="${esc(f.name)}" aria-label="Название прогноза" maxlength="60">
+          <button data-del title="Удалить прогноз">✕</button>
+        </div>
+        <div class="fc-sub">${esc(f.p.diseaseName)} · N=${f.p.N}, k=${f.p.k}, seed ${f.p.seed}${f.runs > 1 ? ` · ${f.runs} прогонов` : ''}</div>
+        <div class="fc-date">начало <input type="date" value="${f.p.start}" data-date aria-label="Дата начала прогноза"> по ${fmtDate(addDays(f.p.start, f.p.T))}</div>
+      </div>`).join('');
+  }
+
+  function renderCompare() {
+    const has = forecasts.length > 0;
+    $('cmpEmpty').hidden = has;
+    $('cmpBody').hidden = !has;
+    $('btnPng').disabled = $('btnCsv').disabled = $('btnClear').disabled = !has;
+    $('btnSave').title = forecasts.length >= MAX_FC ? `Уже ${MAX_FC} прогнозов — удалите лишний` : '';
+    if (!has) { if (cmpChart) { cmpChart.destroy(); cmpChart = null; } return; }
+    renderList();
+    updateCompareChart();
+    renderTable();
+    const keys = new Set(forecasts.map(f => f.p.graphKey));
+    const w = $('cmpWarn');
+    w.hidden = keys.size <= 1;
+    w.textContent = 'Внимание: в прогнозах разные города (число людей, контакты, seed, состав населения или нулевые пациенты). ' +
+      'Разница в результатах может объясняться не только болезнью. Для честного сравнения меняйте только болезнь и оставляйте город тем же.';
+  }
+
+  $('fcList').addEventListener('change', e => {
+    const card = e.target.closest('.fc'); if (!card || e.target.tagName !== 'INPUT') return;
+    const f = forecasts.find(x => x.id === card.dataset.id);
+    if (e.target.matches('[data-date]')) {
+      if (validISO(e.target.value)) f.p.start = e.target.value;
+      persist(); renderCompare();
+      return;
+    }
+    f.name = e.target.value.trim() || f.name;
+    persist(); updateCompareChart(); renderTable();
+  });
+  $('fcList').addEventListener('click', e => {
+    if (!e.target.closest('[data-del]')) return;
+    const id = e.target.closest('.fc').dataset.id;
+    forecasts = forecasts.filter(f => f.id !== id);
+    persist(); renderCompare();
+  });
+  $('cmpMetric').addEventListener('change', () => {
+    CM.metric = document.querySelector('input[name=cmetric]:checked').value; updateCompareChart();
+  });
+  $('cmpAxis').addEventListener('change', () => {
+    CM.axis = document.querySelector('input[name=caxis]:checked').value; updateCompareChart();
+  });
+  $('cmpPct').addEventListener('change', e => { CM.pct = e.target.checked; updateCompareChart(); });
+  $('cmpCur').addEventListener('change', e => { CM.current = e.target.checked; updateCompareChart(); });
+  $('btnClear').addEventListener('click', () => {
+    if (!confirm('Удалить все сохранённые прогнозы?')) return;
+    forecasts = []; persist(); renderCompare();
+  });
+
+  // ----- export -----
+  function download(url, name) {
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  $('btnPng').addEventListener('click', () => {
+    const cv = document.createElement('canvas');
+    cv.width = 1600; cv.height = 900;
+    cv.style.cssText = 'position:fixed;left:-10000px;top:0;width:1600px;height:900px';
+    document.body.appendChild(cv);
+    const bg = { id: 'bg', beforeDraw(c) { const x = c.ctx; x.save(); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.restore(); } };
+    const opts = compareOptions(true);
+    opts.devicePixelRatio = 1;
+    opts.layout = { padding: 24 };
+    const tmp = new Chart(cv, { type: 'line', data: compareData(true), options: opts, plugins: [bg] });
+    const url = tmp.toBase64Image('image/png', 1);
+    tmp.destroy(); cv.remove();
+    download(url, 'sravnenie-prognozov.png');
+  });
+  $('btnCsv').addEventListener('click', () => {
+    const sep = ';';
+    const num = v => v == null ? '' : String(Math.round(v * 10) / 10).replace('.', ',');
+    const cell = v => { const s = String(v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [];
+    const { params, results } = tableRows();
+    lines.push(['Показатель', ...forecasts.map(f => f.name)].map(cell).join(sep));
+    for (const [label, fn] of [...params, ...results]) lines.push([label, ...forecasts.map(fn)].map(cell).join(sep));
+    lines.push('');
+    const keys = [['S', 'здоровые'], ['E', 'инкубация'], ['I', 'больные'], ['R', 'выздоровели'], ['new', 'новые за день'], ['cum', 'всего заражено']];
+    const header = forecasts.flatMap(f => keys.map(([, nm]) => `${f.name}: ${nm}`));
+    if (CM.axis === 'date') {
+      // one row per calendar date; a forecast's cells are empty outside its own period
+      const start = forecasts.reduce((a, f) => f.p.start < a ? f.p.start : a, forecasts[0].p.start);
+      const end = forecasts.reduce((a, f) => { const e = addDays(f.p.start, f.p.T); return e > a ? e : a; }, start);
+      lines.push(['Дата', ...header].map(cell).join(sep));
+      for (let i = 0; i <= diffDays(start, end); i++) {
+        const date = addDays(start, i);
+        lines.push([fmtDate(date), ...forecasts.flatMap(f => {
+          const d = diffDays(f.p.start, date);
+          return keys.map(([k]) => d >= 0 && d <= f.p.T ? num(f.series[k].mean[d]) : '');
+        })].map(cell).join(sep));
+      }
+    } else {
+      lines.push(['День от начала', ...header].map(cell).join(sep));
+      const maxT = Math.max(...forecasts.map(f => f.p.T));
+      for (let d = 0; d <= maxT; d++) {
+        lines.push([d, ...forecasts.flatMap(f => keys.map(([k]) => num(f.series[k].mean[d])))].map(cell).join(sep));
+      }
+    }
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    download(url, 'sravnenie-prognozov.csv');
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  });
+
+  // ================= wiring =================
+  const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  const rebuild = debounce(() => { stopDemo(); readParams(); buildGraph(); }, 120);
+
+  ['N', 'K', 'seed'].forEach(id => $(id).addEventListener('input', () => { readParams(); rebuild(); }));
+  ['kid', 'teen'].forEach(id => $(id).addEventListener('input', () => { readParams(); assignAges(); resetSim(); }));
+  ['beta', 'dI', 'dE0', 'dE1', 'dE2', 'T', 'eInf', 'randDur'].forEach(id =>
+    $(id).addEventListener('input', () => { readParams(); resetSim(); }));
+  $('diseaseSeg').addEventListener('change', () => {
+    const prev = { beta: Math.round(P.beta * 100), dI: P.dI, dE: P.dE.slice() };
+    readParams();
+    if (P.disease === 'custom') {   // start "Своя" from the previously selected disease
+      $('beta').value = prev.beta; $('dI').value = prev.dI;
+      prev.dE.forEach((v, a) => { $('dE' + a).value = v; });
+      readParams();
+    }
+    resetSim();
+  });
+  $('I0').addEventListener('input', () => { readParams(); pickInitial(); resetSim(); });
+  $('chartMode').addEventListener('change', () => {
+    chartMode = document.querySelector('input[name=cmode]:checked').value;
+    initChart(); updateChart();
+  });
+  $('startDate').addEventListener('change', () => { readParams(); initChart(); refresh(); });
+  $('showChains').addEventListener('input', () => { readParams(); requestDraw(); });
+  $('speed').addEventListener('input', readParams);
+
+  $('btnPlay').addEventListener('click', () => { if (playing) { stop(); stopDemo(); } else play(); refresh(); });
+  $('btnStep').addEventListener('click', () => { stop(); stopDemo(); advance(Math.max(700, 1000 / P.speed)); });
+  $('btnReset').addEventListener('click', () => { stopDemo(); resetSim(); });
+  $('btnDemo').addEventListener('click', () => { DEMO.on ? (stop(), stopDemo(), refresh()) : startDemo(); });
+  $('btnTree').addEventListener('click', () => toggleTree(!TREE.on));
+  $('btnFull').addEventListener('click', () => {
+    const el = $('graphPanel');
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (el.requestFullscreen) el.requestFullscreen().catch(() => toast('Браузер не разрешил полноэкранный режим'));
+  });
+  $('fx').addEventListener('change', e => {
+    VIS.fx = e.target.checked;
+    if (!VIS.fx) { VIS.particles = []; VIS.ripples = []; VIS.busyUntil = 0; visReset(); setCountersNow(); }
+    requestDraw();
+  });
+  $('btnSave').addEventListener('click', saveForecast);
+  $('btnNewGraph').addEventListener('click', () => { $('seed').value = Math.floor(Math.random() * 1e6); readParams(); buildGraph(); });
+  $('btnDice').addEventListener('click', () => { $('seed').value = Math.floor(Math.random() * 1e6); readParams(); buildGraph(); });
+  $('btnFit').addEventListener('click', () => fitView(true));
+
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input[type=text], input[type=number], textarea, select')) return;
+    if (e.code === 'Space') { e.preventDefault(); if (playing) { stop(); stopDemo(); } else play(); refresh(); }
+    else if (e.code === 'ArrowRight') { stop(); stopDemo(); advance(Math.max(700, 1000 / P.speed)); }
+  });
+
+  const refit = debounce(() => { if (!DEMO.on) fitPoints(TREE.on && TREE.to ? TREE.to : G.nodes.map(d => [d.x, d.y]), 0); }, 200);
+  new ResizeObserver(() => { resize(); refit(); }).observe(canvas);
+
+  // ================= start =================
+  resize();
+  readParams();
+  buildGraph();
+  renderCompare();
+})();
+</script>
+</body>
+</html>
