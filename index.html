@@ -36,6 +36,8 @@
   header h1 { font-size: 17px; font-weight: 600; margin: 0; }
   header .sub { color: var(--muted); font-size: 13px; }
   header a { color: var(--accent); font-size: 13px; margin-left: auto; text-decoration: none; }
+  header a.ver { margin-left: 0; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; font-variant-numeric: tabular-nums; }
+  header a.ver:hover { color: var(--accent); border-color: var(--accent); }
 
   .app {
     display: grid;
@@ -260,6 +262,7 @@
   <h1><span class="live" id="live" title="Симуляция идёт"></span>Эпидемия на случайном графе</h1>
   <span class="sub">модель SEIR на графе Эрдёша — Реньи G(n, p)</span>
   <a href="#compare">Сравнение прогнозов ↓</a>
+  <a class="ver" href="versions/" title="Номер версии и список предыдущих версий">v3.0</a>
 </header>
 
 <div class="app">
