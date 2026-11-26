@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Версии симулятора</title>
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --border:#2a313c; --text:#e6e9ee; --muted:#8b95a3; --accent:#7aa2f7; color-scheme: dark; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 40px; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  a { color:var(--accent); }
+  ul { list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+  li { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .top { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .top a { font-weight:700; font-size:17px; text-decoration:none; }
+  .date { color:var(--muted); font-size:13px; }
+  .cur { font-size:12px; background:var(--accent); color:#0e1116; border-radius:4px; padding:1px 6px; font-weight:600; }
+  li p { margin:4px 0 0; }
+  .note { margin-top:22px; color:var(--muted); font-size:13.5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Версии симулятора эпидемии</h1>
+  <p class="sub">Каждую версию можно открыть и посмотреть. Подробный список изменений — в <a href="https://github.com/qwest65/Epidemic/blob/main/CHANGELOG.md">CHANGELOG</a>.</p>
+  <ul>
+    <li><div class="top"><a href="../">v3.0</a><span class="date">26.11.2026</span><span class="cur">актуальная</span></div><p>Анимация заражений (искры, свечение, волны), демо-режим с подписями, дерево заражения по поколениям, полноэкранный режим, номер версии и архив версий.</p></li>
+    <li><div class="top"><a href="v2.1/">v2.1</a><span class="date">25.11.2026</span></div><p>Своя дата начала у каждого прогноза, ось графиков по датам.</p></li>
+    <li><div class="top"><a href="v2.0/">v2.0</a><span class="date">25.11.2026</span></div><p>Выбор болезни (ОРВИ, грипп, COVID-19, своя), дети/подростки/взрослые, до 100 начальных заражённых, сравнение прогнозов, PNG и CSV.</p></li>
+    <li><div class="top"><a href="v1.1/">v1.1</a><span class="date">24.11.2026</span></div><p>До 900 человек, период симуляции до 90 дней.</p></li>
+    <li><div class="top"><a href="v1.0/">v1.0</a><span class="date">24.11.2026</span></div><p>Первая версия: модель SEIR на графе Эрдёша — Реньи, до 300 человек, период до 180 дней.</p></li>
+  </ul>
+  <p class="note">Сохранённые прогнозы хранятся в браузере и общие для версий, начиная с v2.0. Как вернуть сайт к старой версии — в разделе «Версии и откат» README.</p>
+</main>
+</body>
+</html>

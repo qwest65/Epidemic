@@ -36,6 +36,8 @@
   header h1 { font-size: 17px; font-weight: 600; margin: 0; }
   header .sub { color: var(--muted); font-size: 13px; }
   header a { color: var(--accent); font-size: 13px; margin-left: auto; text-decoration: none; }
+  header a.ver { margin-left: 0; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; font-variant-numeric: tabular-nums; }
+  header a.ver:hover { color: var(--accent); border-color: var(--accent); }
 
   .app {
     display: grid;
@@ -157,6 +159,33 @@
   .chart-panel .group-title { margin-bottom: 4px; }
   .chart-wrap { position: relative; flex: 1; min-height: 0; }
 
+  /* ---------- wow ---------- */
+  .live { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--border); margin-right: 9px; vertical-align: 1px; }
+  .live.on { background: var(--I); animation: livePulse 1.4s infinite; }
+  @keyframes livePulse {
+    0% { box-shadow: 0 0 0 0 rgba(229,72,77,.75); }
+    70% { box-shadow: 0 0 0 9px rgba(229,72,77,0); }
+    100% { box-shadow: 0 0 0 0 rgba(229,72,77,0); }
+  }
+  .tools { display: flex; gap: 6px; pointer-events: auto; flex-wrap: wrap; justify-content: flex-end; }
+  .tools button { padding: 4px 8px; font-size: 12px; background: rgba(28,34,43,.92); }
+  .tools button.on { background: var(--accent); color: #0e1116; border-color: var(--accent); font-weight: 600; }
+  .caption {
+    position: absolute; left: 50%; bottom: 40px; transform: translate(-50%, 14px);
+    width: max-content; max-width: min(680px, calc(100% - 32px));
+    background: rgba(14,17,22,.9); border: 1px solid var(--border); border-radius: 12px;
+    padding: 11px 18px; font-size: 16px; line-height: 1.45; text-align: center;
+    opacity: 0; transition: opacity .45s ease, transform .45s ease; pointer-events: none; z-index: 6;
+    box-shadow: 0 10px 34px rgba(0,0,0,.5);
+  }
+  .caption.show { opacity: 1; transform: translate(-50%, 0); }
+  .graph-hint { transition: opacity .3s; }
+  .caption.show ~ .graph-hint { opacity: 0; }
+  .caption b { color: var(--I); }
+  .graph-panel:fullscreen { border-radius: 0; border: 0; background: var(--bg); }
+  .graph-panel:fullscreen .caption { font-size: 22px; bottom: 60px; }
+  .card .val { transition: color .3s; }
+
   /* ---------- comparison ---------- */
   .compare { margin: 0 12px 16px; padding: 14px; }
   .compare-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 12px; }
@@ -220,6 +249,7 @@
     .right { grid-template-columns: minmax(0, 1fr); }
     .graph-panel { height: 70vw; min-height: 320px; }
     .cards { grid-template-columns: repeat(2, 1fr); }
+    .caption { font-size: 14px; bottom: 44px; }
     .metrics { grid-template-columns: 1fr; }
     .compare { margin: 0 16px 16px; }
     .cmp-controls .seg { grid-template-columns: repeat(3, 1fr); }
@@ -229,9 +259,10 @@
 </head>
 <body>
 <header>
-  <h1>Эпидемия на случайном графе</h1>
+  <h1><span class="live" id="live" title="Симуляция идёт"></span>Эпидемия на случайном графе</h1>
   <span class="sub">модель SEIR на графе Эрдёша — Реньи G(n, p)</span>
   <a href="#compare">Сравнение прогнозов ↓</a>
+  <a class="ver" href="versions/" title="Номер версии и список предыдущих версий">v3.0</a>
 </header>
 
 <div class="app">
@@ -246,6 +277,7 @@
         <button id="btnSave" class="save wide">💾 Сохранить прогноз для сравнения</button>
       </div>
       <label class="check"><input type="checkbox" id="mc"> Усреднить по 20 прогонам</label>
+      <label class="check"><input type="checkbox" id="fx" checked> ✨ Анимация заражений и эффекты</label>
       <div class="field">
         <label>Скорость <output id="oSpeed"></output></label>
         <input type="range" id="speed" min="0.5" max="20" step="0.5" value="4">
@@ -357,8 +389,14 @@
         <span><i class="shape diamond"></i>подростки</span>
         <span><i class="shape circle"></i>взрослые</span>
       </div>
-      <button id="btnFit" title="Вписать граф в окно">⤢ Вписать</button>
+      <div class="tools">
+        <button id="btnDemo" title="Демонстрация: камера следит за эпидемией, внизу подписи">🎬 Демо</button>
+        <button id="btnTree" title="Перестроить людей в дерево заражения по поколениям">🌳 Дерево</button>
+        <button id="btnFit" title="Вписать граф в окно">⤢</button>
+        <button id="btnFull" title="Во весь экран">⛶</button>
+      </div>
     </div>
+    <div class="caption" id="caption"></div>
     <div class="graph-hint">Колесо мыши: масштаб · перетаскивание: сдвиг · клик по узлу в день 0: добавить или убрать нулевого пациента</div>
     <div class="tooltip" id="tooltip"></div>
   </section>
@@ -606,6 +644,8 @@
     assignAges();
     pickInitial();
 
+    if (TREE.on) setTreeButton(false);
+    morph = null;
     if (forceSim) forceSim.stop();
     const meanDeg = Math.max(1, 2 * links.length / n);
     forceSim = d3.forceSimulation(nodes)
@@ -710,31 +750,50 @@
   function resetSim() {
     stop();
     Sim = createSim(simSeed(0));
+    Sim.peakShown = false;
+    hideCaption();
+    visReset();
+    if (TREE.on) { TREE.to = treeLayout(); morphTo(TREE.to, 600); }
     initChart();
     refresh();
   }
 
   let playing = false, rafId = 0, lastT = 0, acc = 0;
+  const dayInterval = () => 1000 / (DEMO.on ? Math.min(P.speed, 2.5) : P.speed);
   function play() {
     if (Sim.day >= P.T) return;
     playing = true; lastT = performance.now(); acc = 1e9;
     $('btnPlay').textContent = '❚❚ Пауза';
+    $('live').classList.add('on');
     rafId = requestAnimationFrame(loop);
   }
   function stop() {
     playing = false; cancelAnimationFrame(rafId);
     $('btnPlay').textContent = '▶ Старт';
+    $('live').classList.remove('on');
   }
   function loop(t) {
     if (!playing) return;
     acc += t - lastT; lastT = t;
-    const interval = 1000 / P.speed;
+    const interval = dayInterval();
     if (acc >= interval) {
       acc = Math.min(acc - interval, interval);
-      simStep(Sim); refresh();
+      advance(interval);
       if (Sim.day >= P.T) { stop(); refresh(); return; }
     }
     rafId = requestAnimationFrame(loop);
+  }
+
+  // one day forward for the animated run, with all visual side effects
+  function advance(interval) {
+    if (Sim.day >= P.T) return;
+    simStep(Sim);
+    const newCount = Sim.newInf[Sim.day] || 0;
+    visSync(interval);
+    if (TREE.on) { TREE.to = treeLayout(); morphTo(TREE.to, Math.min(800, interval * 0.85)); }
+    demoOnDay(newCount);
+    peakCheck();
+    refresh();
   }
 
   // ================= current-run chart =================
@@ -795,7 +854,8 @@
     const n = G.n, c = counts(Sim);
     $('dayLabel').innerHTML = `День ${Sim.day} из ${P.T}<small>${fmtDate(addDays(P.start, Sim.day))}</small>`;
     $('progress').style.width = (100 * Sim.day / P.T) + '%';
-    ['S', 'E', 'I', 'R'].forEach((k, s) => { $('c' + k).textContent = c[s]; $('p' + k).textContent = pct(c[s], n); });
+    ['S', 'E', 'I', 'R'].forEach((k, s) => { COUNTERS.target[s] = c[s]; $('p' + k).textContent = pct(c[s], n); });
+    if (!VIS.fx) setCountersNow();
 
     let status;
     if (Sim.ended !== null) status = `Эпидемия закончилась ${fmtDate(addDays(P.start, Sim.ended))} (день ${Sim.ended})`;
@@ -826,10 +886,96 @@
     requestDraw();
   }
 
-  // ================= drawing =================
+  // ================= drawing & effects =================
   const canvas = $('graph'), ctx = canvas.getContext('2d');
   let W = 0, H = 0, dpr = 1, transform = d3.zoomIdentity, hover = -1, drawPending = false;
   const nodeR = () => Math.max(3, Math.min(7, 60 / Math.sqrt(G.n || 100)));
+  const RGB = COL.map(h => [1, 3, 5].map(o => parseInt(h.slice(o, o + 2), 16)));
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // per-node visual state: colour transitions, sparks travelling along edges, ripples
+  const VIS = { fx: !reduceMotion, shown: null, from: null, to: null, t0: null, dur: null, busyUntil: 0, particles: [], ripples: [] };
+  $('fx').checked = VIS.fx;
+
+  function visReset() {
+    const n = G.n;
+    VIS.shown = Sim.state.slice();
+    VIS.from = new Float32Array(n * 3); VIS.to = new Float32Array(n * 3);
+    VIS.t0 = new Float64Array(n); VIS.dur = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const c = RGB[Sim.state[i]]; for (let k = 0; k < 3; k++) VIS.from[i * 3 + k] = VIS.to[i * 3 + k] = c[k]; }
+    VIS.particles = []; VIS.ripples = []; VIS.busyUntil = 0;
+  }
+  function colorAt(i, now, out) {
+    const t0 = VIS.t0[i], d = VIS.dur[i];
+    let u = now <= t0 ? 0 : d > 0 ? (now - t0) / d : 1;
+    if (u > 1) u = 1;
+    for (let k = 0; k < 3; k++) out[k] = VIS.from[i * 3 + k] + (VIS.to[i * 3 + k] - VIS.from[i * 3 + k]) * u;
+    return out;
+  }
+  const tmpC = [0, 0, 0];
+  function visSync(interval) {
+    const now = performance.now();
+    const travel = VIS.fx ? Math.min(900, interval * 0.75) : 0;
+    const fade = VIS.fx ? 380 : 0;
+    for (let i = 0; i < G.n; i++) {
+      const st = Sim.state[i];
+      if (st === VIS.shown[i]) continue;
+      const newly = VIS.shown[i] === S_;
+      let delay = 0;
+      if (newly && VIS.fx && Sim.infBy[i] >= 0) { VIS.particles.push({ a: Sim.infBy[i], b: i, t0: now, dur: travel }); delay = travel; }
+      colorAt(i, now, tmpC);
+      for (let k = 0; k < 3; k++) { VIS.from[i * 3 + k] = tmpC[k]; VIS.to[i * 3 + k] = RGB[st][k]; }
+      VIS.t0[i] = now + delay; VIS.dur[i] = fade;
+      VIS.busyUntil = Math.max(VIS.busyUntil, now + delay + fade);
+      if (newly && VIS.fx) VIS.ripples.push({ i, t0: now + delay, c: RGB[st] });
+      VIS.shown[i] = st;
+    }
+  }
+
+  // soft glow sprites (drawn with additive blending)
+  function sprite(r, g, b, a0) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d'), grd = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, `rgba(${r},${g},${b},${a0})`);
+    grd.addColorStop(0.35, `rgba(${r},${g},${b},${a0 * 0.4})`);
+    grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    x.fillStyle = grd; x.fillRect(0, 0, 64, 64);
+    return c;
+  }
+  const GLOW_I = sprite(255, 80, 85, 0.85), GLOW_E = sprite(242, 169, 59, 0.5), GLOW_SPARK = sprite(255, 214, 150, 1);
+
+  // animated counters
+  const COUNTERS = { target: [0, 0, 0, 0], shown: [0, 0, 0, 0] };
+  const CNT_IDS = ['cS', 'cE', 'cI', 'cR'];
+  function setCountersNow() { for (let s = 0; s < 4; s++) { COUNTERS.shown[s] = COUNTERS.target[s]; $(CNT_IDS[s]).textContent = COUNTERS.target[s]; } }
+  function tweenCounters() {
+    let moving = false;
+    for (let s = 0; s < 4; s++) {
+      const t = COUNTERS.target[s], v = COUNTERS.shown[s];
+      if (v === t) continue;
+      const nv = Math.abs(t - v) < 0.6 ? t : v + (t - v) * 0.18;
+      COUNTERS.shown[s] = nv; moving = true;
+      $(CNT_IDS[s]).textContent = Math.round(nv);
+    }
+    return moving;
+  }
+
+  // node position morphing (network ⇄ infection tree)
+  let morph = null;
+  function morphTo(targets, dur) {
+    morph = { t0: performance.now(), dur: Math.max(1, dur), from: G.nodes.map(d => [d.x, d.y]), to: targets };
+    requestDraw();
+  }
+  function stepMorph(now) {
+    if (!morph) return false;
+    const u = Math.min(1, (now - morph.t0) / morph.dur), e = d3.easeCubicInOut(u);
+    G.nodes.forEach((d, i) => {
+      const a = morph.from[i], b = morph.to[i];
+      d.x = a[0] + (b[0] - a[0]) * e; d.y = a[1] + (b[1] - a[1]) * e;
+    });
+    if (u >= 1) morph = null;
+    return true;
+  }
 
   function resize() {
     const r = canvas.getBoundingClientRect();
@@ -849,50 +995,248 @@
       const a = r * 1.3; ctx.moveTo(x, y - a); ctx.lineTo(x + a, y); ctx.lineTo(x, y + a); ctx.lineTo(x - a, y); ctx.closePath();
     } else { const a = r * 0.9; ctx.rect(x - a, y - a, 2 * a, 2 * a); }
   }
+
   function draw() {
     drawPending = false;
-    if (!Sim) return;
+    if (!Sim || !VIS.shown) return;
+    const now = performance.now();
+    const morphing = stepMorph(now);
+    const counting = VIS.fx ? tweenCounters() : false;
+
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
-    const k = transform.k, nodes = G.nodes, r = Math.max(nodeR(), 2.6 / k);
+    const k = transform.k, sk = Math.sqrt(k), nodes = G.nodes, r = Math.max(nodeR(), 2.6 / k);
+    const tree = TREE.on, n = G.n;
+    const arrived = i => now >= VIS.t0[i];
 
-    ctx.beginPath();
-    for (const l of G.links) { ctx.moveTo(l.source.x, l.source.y); ctx.lineTo(l.target.x, l.target.y); }
-    ctx.strokeStyle = EDGE_COL; ctx.lineWidth = 0.8 / Math.sqrt(k); ctx.stroke();
-
-    if (hover >= 0) {
-      ctx.beginPath();
-      const h = nodes[hover];
-      for (const j of G.adj[hover]) { ctx.moveTo(h.x, h.y); ctx.lineTo(nodes[j].x, nodes[j].y); }
-      ctx.strokeStyle = 'rgba(122,162,247,.7)'; ctx.lineWidth = 1.4 / Math.sqrt(k); ctx.stroke();
-    }
-
-    if (P.showChains) {
-      ctx.beginPath();
-      for (let i = 0; i < G.n; i++) {
-        const b = Sim.infBy[i];
-        if (b >= 0) { ctx.moveTo(nodes[b].x, nodes[b].y); ctx.lineTo(nodes[i].x, nodes[i].y); }
+    // generation rings of the infection tree
+    if (tree && TREE.maxDepth > 0) {
+      ctx.strokeStyle = 'rgba(122,162,247,.14)'; ctx.lineWidth = 1 / k;
+      ctx.fillStyle = 'rgba(139,149,163,.75)'; ctx.font = `${11 / k}px system-ui, sans-serif`; ctx.textAlign = 'center';
+      for (let d = 1; d <= TREE.maxDepth; d++) {
+        const rad = d * TREE.ring;
+        ctx.beginPath(); ctx.arc(0, 0, rad, 0, 2 * Math.PI); ctx.stroke();
+        ctx.fillText(`поколение ${TREE.single ? d : d - 1}`, 0, -rad - 4 / k);
       }
-      const big = G.n > 300;
-      ctx.strokeStyle = big ? 'rgba(229,72,77,.5)' : 'rgba(229,72,77,.75)';
-      ctx.lineWidth = (big ? 1.1 : 1.8) / Math.sqrt(k); ctx.stroke();
     }
 
+    // contact edges
+    if (!tree) {
+      ctx.beginPath();
+      for (const l of G.links) { ctx.moveTo(l.source.x, l.source.y); ctx.lineTo(l.target.x, l.target.y); }
+      ctx.strokeStyle = EDGE_COL; ctx.lineWidth = 0.8 / sk; ctx.stroke();
+      if (hover >= 0) {
+        ctx.beginPath();
+        const h = nodes[hover];
+        for (const j of G.adj[hover]) { ctx.moveTo(h.x, h.y); ctx.lineTo(nodes[j].x, nodes[j].y); }
+        ctx.strokeStyle = 'rgba(122,162,247,.7)'; ctx.lineWidth = 1.4 / sk; ctx.stroke();
+      }
+    }
+
+    // transmission chains (only once the spark has arrived)
+    if (P.showChains || tree) {
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const b = Sim.infBy[i];
+        if (b >= 0 && arrived(i)) { ctx.moveTo(nodes[b].x, nodes[b].y); ctx.lineTo(nodes[i].x, nodes[i].y); }
+      }
+      const big = n > 300;
+      ctx.strokeStyle = tree ? 'rgba(229,72,77,.55)' : big ? 'rgba(229,72,77,.5)' : 'rgba(229,72,77,.75)';
+      ctx.lineWidth = (tree ? 1.3 : big ? 1.1 : 1.8) / sk; ctx.stroke();
+    }
+
+    // glow under infectious / incubating people
+    if (VIS.fx) {
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < n; i++) {
+        const st = VIS.shown[i];
+        if ((st !== I_ && st !== E_) || !arrived(i)) continue;
+        const pulse = st === I_ ? 1 + 0.18 * Math.sin(now / 260 + i * 1.7) : 1;
+        const g = r * (st === I_ ? 4.2 : 3) * pulse;
+        ctx.drawImage(st === I_ ? GLOW_I : GLOW_E, nodes[i].x - g, nodes[i].y - g, 2 * g, 2 * g);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // people: settled ones batched by state, the rest drawn one by one with interpolated colour
+    const busy = [];
     for (let s = 0; s < 4; s++) {
       ctx.beginPath();
-      for (let i = 0; i < G.n; i++) if (Sim.state[i] === s) addShape(nodes[i].x, nodes[i].y, r, G.age[i]);
+      for (let i = 0; i < n; i++) {
+        if (s === 0 && now < VIS.t0[i] + VIS.dur[i]) { busy.push(i); continue; }
+        if (VIS.shown[i] === s && now >= VIS.t0[i] + VIS.dur[i]) addShape(nodes[i].x, nodes[i].y, r, G.age[i]);
+      }
+      ctx.globalAlpha = tree && s === S_ ? 0.3 : 1;
       ctx.fillStyle = COL[s]; ctx.fill();
     }
+    ctx.globalAlpha = 1;
+    for (const i of busy) {
+      colorAt(i, now, tmpC);
+      ctx.beginPath(); addShape(nodes[i].x, nodes[i].y, r, G.age[i]);
+      ctx.fillStyle = `rgb(${tmpC[0] | 0},${tmpC[1] | 0},${tmpC[2] | 0})`; ctx.fill();
+    }
 
+    // patient zero rings
     ctx.beginPath();
     for (const i of initialSet) { ctx.moveTo(nodes[i].x + r + 3, nodes[i].y); ctx.arc(nodes[i].x, nodes[i].y, r + 3, 0, 2 * Math.PI); }
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 / Math.sqrt(k); ctx.stroke();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 / sk; ctx.stroke();
+
+    // ripples where an infection lands
+    VIS.ripples = VIS.ripples.filter(rp => now - rp.t0 < 900);
+    for (const rp of VIS.ripples) {
+      const u = (now - rp.t0) / 900;
+      if (u < 0) continue;
+      const p = nodes[rp.i];
+      ctx.beginPath(); ctx.arc(p.x, p.y, r + (26 * d3.easeCubicOut(u)) / sk, 0, 2 * Math.PI);
+      ctx.strokeStyle = `rgba(${rp.c[0]},${rp.c[1]},${rp.c[2]},${(1 - u) * 0.9})`;
+      ctx.lineWidth = (2.4 * (1 - u) + 0.3) / sk; ctx.stroke();
+    }
+
+    // sparks travelling from the infector to the newly infected
+    VIS.particles = VIS.particles.filter(pt => now - pt.t0 < pt.dur);
+    if (VIS.particles.length) {
+      ctx.globalCompositeOperation = 'lighter';
+      for (const pt of VIS.particles) {
+        const u = Math.max(0, (now - pt.t0) / pt.dur), e = d3.easeCubicInOut(u), e0 = d3.easeCubicInOut(Math.max(0, u - 0.22));
+        const a = nodes[pt.a], b = nodes[pt.b];
+        const x = a.x + (b.x - a.x) * e, y = a.y + (b.y - a.y) * e;
+        const x0 = a.x + (b.x - a.x) * e0, y0 = a.y + (b.y - a.y) * e0;
+        const grd = ctx.createLinearGradient(x0, y0, x, y);
+        grd.addColorStop(0, 'rgba(255,170,90,0)'); grd.addColorStop(1, 'rgba(255,200,140,.95)');
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x, y);
+        ctx.strokeStyle = grd; ctx.lineWidth = 2.6 / sk; ctx.lineCap = 'round'; ctx.stroke();
+        const g = r * 2.6;
+        ctx.drawImage(GLOW_SPARK, x - g, y - g, 2 * g, 2 * g);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.lineCap = 'butt';
+    }
 
     if (hover >= 0) {
       ctx.beginPath(); ctx.arc(nodes[hover].x, nodes[hover].y, r + 4.5, 0, 2 * Math.PI);
-      ctx.strokeStyle = '#7aa2f7'; ctx.lineWidth = 2 / Math.sqrt(k); ctx.stroke();
+      ctx.strokeStyle = '#7aa2f7'; ctx.lineWidth = 2 / sk; ctx.stroke();
+    }
+
+    const pulsing = VIS.fx && (Sim.hist[I_][Sim.day] > 0 || Sim.hist[E_][Sim.day] > 0);
+    if (morphing || counting || pulsing || VIS.particles.length || VIS.ripples.length || now < VIS.busyUntil) requestDraw();
+  }
+
+  // ================= infection tree =================
+  const TREE = { on: false, to: null, gen: null, maxDepth: 0, ring: 46, single: false };
+  function treeLayout() {
+    const n = G.n, single = initialSet.length === 1;
+    const rows = [{ id: 'root', parentId: null }];
+    const infected = [];
+    for (let i = 0; i < n; i++) if (Sim.infDay[i] >= 0) {
+      infected.push(i);
+      rows.push({ id: String(i), parentId: Sim.infBy[i] >= 0 ? String(Sim.infBy[i]) : 'root' });
+    }
+    const root = d3.stratify().id(d => d.id).parentId(d => d.parentId)(rows);
+    d3.tree().size([2 * Math.PI, 1]).separation((a, b) => (a.parent === b.parent ? 1 : 2) / Math.max(1, a.depth))(root);
+    const ring = TREE.ring, to = new Array(n), gen = new Int16Array(n).fill(-1);
+    let maxD = 0;
+    root.each(d => {
+      if (d.id === 'root') return;
+      const i = +d.id, dep = d.depth - (single ? 1 : 0), rad = dep * ring;
+      to[i] = [rad * Math.cos(d.x - Math.PI / 2), rad * Math.sin(d.x - Math.PI / 2)];
+      gen[i] = d.depth - 1;
+      maxD = Math.max(maxD, dep);
+    });
+    const rest = d3.range(n).filter(i => Sim.infDay[i] < 0);
+    const R = Math.max((maxD + 1.6) * ring, rest.length * 7 / (2 * Math.PI));
+    rest.forEach((i, j) => { const a = j / Math.max(1, rest.length) * 2 * Math.PI; to[i] = [R * Math.cos(a), R * Math.sin(a)]; });
+    TREE.gen = gen; TREE.maxDepth = maxD; TREE.single = single;
+    return to;
+  }
+  function setTreeButton(on) { TREE.on = on; $('btnTree').classList.toggle('on', on); }
+  function toggleTree(on) {
+    setTreeButton(on);
+    if (on) {
+      forceSim.stop();
+      TREE.to = treeLayout();
+      morphTo(TREE.to, 1400);
+      fitPoints(TREE.to, 1400);
+      if (TREE.maxDepth === 0) showCaption('Пока заражены только нулевые пациенты — запустите симуляцию, и дерево начнёт расти.', 3500);
+    } else {
+      morph = null;
+      fitted = false;
+      forceSim.alpha(0.9).restart();
+    }
+    requestDraw();
+  }
+
+  // ================= captions, demo mode, peak =================
+  let capT = 0;
+  function showCaption(html, ms = 4500) {
+    const c = $('caption');
+    c.innerHTML = html; c.classList.add('show');
+    clearTimeout(capT); capT = setTimeout(() => c.classList.remove('show'), ms);
+  }
+  function hideCaption() { clearTimeout(capT); $('caption').classList.remove('show'); }
+
+  function peakCheck() {
+    if (Sim.peakShown || !VIS.fx) return;
+    // a real peak: the wave is big enough, has clearly turned down and stayed down for 3 days
+    const cur = Sim.hist[I_][Sim.day], pk = Sim.peak, cum = G.n - Sim.hist[S_][Sim.day];
+    if (pk.v >= Math.max(4, 0.06 * G.n) && cum >= 0.15 * G.n && Sim.day - pk.day >= 3 && cur <= pk.v * 0.8) {
+      Sim.peakShown = true;
+      showCaption(`⚡ <b>Пик эпидемии пройден</b> ${fmtDate(addDays(P.start, pk.day))}: одновременно болели ${pk.v} человек (${pct(pk.v, G.n)}).`, 5000);
+    }
+  }
+
+  const DEMO = { on: false, flags: {}, timer: 0 };
+  function infectedPoints() {
+    const pts = [];
+    for (let i = 0; i < G.n; i++) if (Sim.infDay[i] >= 0) pts.push(TREE.on && TREE.to ? TREE.to[i] : [G.nodes[i].x, G.nodes[i].y]);
+    return pts;
+  }
+  function startDemo() {
+    stopDemo();
+    resetSim();
+    DEMO.on = true; DEMO.flags = {};
+    $('btnDemo').classList.add('on');
+    const pts = [];
+    for (const i of initialSet) { pts.push([G.nodes[i].x, G.nodes[i].y]); for (const j of G.adj[i]) pts.push([G.nodes[j].x, G.nodes[j].y]); }
+    fitPoints(pts, 1400, 3.2, 90);
+    showCaption(initialSet.length === 1
+      ? `${fmtDate(P.start)}. Всё начинается с <b>одного человека</b>…`
+      : `${fmtDate(P.start)}. Всё начинается с <b>${initialSet.length} заболевших</b>…`, 3200);
+    DEMO.timer = setTimeout(() => { if (DEMO.on) play(); }, 2000);
+  }
+  function stopDemo() {
+    clearTimeout(DEMO.timer);
+    if (DEMO.on) hideCaption();
+    DEMO.on = false;
+    $('btnDemo').classList.remove('on');
+  }
+  function demoOnDay(newCount) {
+    if (!DEMO.on) return;
+    const f = DEMO.flags, n = G.n, c = counts(Sim), cum = n - c[S_];
+    if (cum < 40 || Sim.day % 2 === 0) fitPoints(infectedPoints(), 900, 3.2, 80);
+    const date = fmtDate(addDays(P.start, Sim.day));
+    if (!f.first && newCount > 0) {
+      f.first = true;
+      let a = -1, b = -1;
+      for (let i = 0; i < n; i++) if (Sim.infDay[i] === Sim.day && Sim.infBy[i] >= 0) { a = Sim.infBy[i]; b = i; break; }
+      showCaption(`${date}: первая передача — <b>#${a}</b> заразил <b>#${b}</b>. Болезнь идёт только по знакомствам.`, 4500);
+    } else if (!f.ten && cum >= 0.1 * n) {
+      f.ten = true;
+      showCaption(`${date}: заражено уже <b>10% города</b>. Каждый больной заражает в среднем ≈ ${estimateR0().toFixed(1)} чел.`, 4500);
+    } else if (!f.half && cum >= 0.5 * n) {
+      f.half = true;
+      showCaption(`${date}: переболела или болеет <b>половина города</b>.`, 4000);
+    }
+    if (Sim.ended !== null || Sim.day >= P.T) {
+      const aa = ageAttack(Sim).map(v => v == null ? '—' : Math.round(v * 100) + '%');
+      const end = Sim.ended !== null ? `Эпидемия закончилась ${fmtDate(addDays(P.start, Sim.ended))}.` : `Прошло ${days(P.T)}.`;
+      setTimeout(() => {
+        showCaption(`${end} Итог: заразились <b>${cum} из ${n}</b> (${pct(cum, n)}).<br>Дети ${aa[0]} · подростки ${aa[1]} · взрослые ${aa[2]}`, 9000);
+        fitView(true);
+      }, 1200);
+      DEMO.on = false;
+      $('btnDemo').classList.remove('on');
     }
   }
 
@@ -900,15 +1244,18 @@
   const zoom = d3.zoom().scaleExtent([0.1, 12]).on('zoom', e => { transform = e.transform; hideTip(); requestDraw(); });
   d3.select(canvas).call(zoom).on('dblclick.zoom', null);
 
-  function fitView(animate) {
-    if (!G.nodes.length || !W) return;
-    const xs = G.nodes.map(d => d.x), ys = G.nodes.map(d => d.y);
-    const x0 = d3.min(xs), x1 = d3.max(xs), y0 = d3.min(ys), y1 = d3.max(ys);
-    const pad = 40;
-    const s = Math.min(4, (W - 2 * pad) / Math.max(1, x1 - x0), (H - 2 * pad - 50) / Math.max(1, y1 - y0));
+  function fitPoints(pts, dur = 500, maxScale = 4, pad = 40) {
+    if (!pts.length || !W) return;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [x, y] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    const s = Math.min(maxScale, (W - 2 * pad) / Math.max(1, x1 - x0), (H - 2 * pad - 50) / Math.max(1, y1 - y0));
     const t = d3.zoomIdentity.translate(W / 2, H / 2 + 18).scale(s).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
     const sel = d3.select(canvas);
-    (animate ? sel.transition().duration(500) : sel).call(zoom.transform, t);
+    (dur > 0 ? sel.transition().duration(dur).ease(d3.easeCubicInOut) : sel).call(zoom.transform, t);
+  }
+  function fitView(animate) {
+    if (!G.nodes.length) return;
+    fitPoints(G.nodes.map(d => [d.x, d.y]), animate ? 600 : 0);
   }
 
   function nodeAt(mx, my) {
@@ -937,6 +1284,7 @@
     else if (initialSet.includes(i)) lines.push('Нулевой пациент');
     let spread = 0; for (let j = 0; j < G.n; j++) if (Sim.infBy[j] === i) spread++;
     if (spread) lines.push(`Заразил: ${spread} чел.`);
+    if (TREE.on && TREE.gen && TREE.gen[i] >= 0) lines.push(`Поколение заражения: ${TREE.gen[i]}`);
     tip.innerHTML = lines.join('<br>');
     tip.style.display = 'block';
     const pw = canvas.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
@@ -1040,6 +1388,7 @@
     btn.textContent = '💾 Сохранить прогноз для сравнения';
     btn.disabled = false;
     renderCompare();
+    animateCompare();
     toast(`Сохранено: «${f.name}». Сравнение — внизу страницы.`);
   }
 
@@ -1141,6 +1490,27 @@
       cmpChart.options = compareOptions(false);
       cmpChart.update('none');
     }
+  }
+
+  // lines draw themselves from left to right (used right after a forecast is saved)
+  function animateCompare() {
+    if (!cmpChart || !VIS.fx) return;
+    const data = cmpChart.data, per = 1600 / Math.max(1, data.labels.length);
+    const prevY = c => c.index === 0
+      ? c.chart.scales.y.getPixelForValue(0)
+      : c.chart.getDatasetMeta(c.datasetIndex).data[c.index - 1].getProps(['y'], true).y;
+    const delay = key => c => { if (c.type !== 'data' || c[key]) return 0; c[key] = true; return c.index * per; };
+    cmpChart.destroy();
+    cmpChart = new Chart($('cmpChart'), {
+      type: 'line', data,
+      options: Object.assign(compareOptions(false), {
+        animation: {
+          x: { type: 'number', easing: 'linear', duration: per, from: NaN, delay: delay('xStarted') },
+          y: { type: 'number', easing: 'linear', duration: per, from: prevY, delay: delay('yStarted') },
+        },
+      }),
+    });
+    setTimeout(() => { if (cmpChart) cmpChart.options.animation = false; }, 2000);
   }
 
   // ----- comparison table -----
@@ -1323,7 +1693,7 @@
 
   // ================= wiring =================
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-  const rebuild = debounce(() => { readParams(); buildGraph(); }, 120);
+  const rebuild = debounce(() => { stopDemo(); readParams(); buildGraph(); }, 120);
 
   ['N', 'K', 'seed'].forEach(id => $(id).addEventListener('input', () => { readParams(); rebuild(); }));
   ['kid', 'teen'].forEach(id => $(id).addEventListener('input', () => { readParams(); assignAges(); resetSim(); }));
@@ -1344,9 +1714,21 @@
   $('showChains').addEventListener('input', () => { readParams(); requestDraw(); });
   $('speed').addEventListener('input', readParams);
 
-  $('btnPlay').addEventListener('click', () => { playing ? stop() : play(); refresh(); });
-  $('btnStep').addEventListener('click', () => { stop(); simStep(Sim); refresh(); });
-  $('btnReset').addEventListener('click', resetSim);
+  $('btnPlay').addEventListener('click', () => { if (playing) { stop(); stopDemo(); } else play(); refresh(); });
+  $('btnStep').addEventListener('click', () => { stop(); stopDemo(); advance(Math.max(700, 1000 / P.speed)); });
+  $('btnReset').addEventListener('click', () => { stopDemo(); resetSim(); });
+  $('btnDemo').addEventListener('click', () => { DEMO.on ? (stop(), stopDemo(), refresh()) : startDemo(); });
+  $('btnTree').addEventListener('click', () => toggleTree(!TREE.on));
+  $('btnFull').addEventListener('click', () => {
+    const el = $('graphPanel');
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (el.requestFullscreen) el.requestFullscreen().catch(() => toast('Браузер не разрешил полноэкранный режим'));
+  });
+  $('fx').addEventListener('change', e => {
+    VIS.fx = e.target.checked;
+    if (!VIS.fx) { VIS.particles = []; VIS.ripples = []; VIS.busyUntil = 0; visReset(); setCountersNow(); }
+    requestDraw();
+  });
   $('btnSave').addEventListener('click', saveForecast);
   $('btnNewGraph').addEventListener('click', () => { $('seed').value = Math.floor(Math.random() * 1e6); readParams(); buildGraph(); });
   $('btnDice').addEventListener('click', () => { $('seed').value = Math.floor(Math.random() * 1e6); readParams(); buildGraph(); });
@@ -1354,11 +1736,11 @@
 
   document.addEventListener('keydown', e => {
     if (e.target.matches('input[type=text], input[type=number], textarea, select')) return;
-    if (e.code === 'Space') { e.preventDefault(); playing ? stop() : play(); refresh(); }
-    else if (e.code === 'ArrowRight') { stop(); simStep(Sim); refresh(); }
+    if (e.code === 'Space') { e.preventDefault(); if (playing) { stop(); stopDemo(); } else play(); refresh(); }
+    else if (e.code === 'ArrowRight') { stop(); stopDemo(); advance(Math.max(700, 1000 / P.speed)); }
   });
 
-  const refit = debounce(() => fitView(false), 200);
+  const refit = debounce(() => { if (!DEMO.on) fitPoints(TREE.on && TREE.to ? TREE.to : G.nodes.map(d => [d.x, d.y]), 0); }, 200);
   new ResizeObserver(() => { resize(); refit(); }).observe(canvas);
 
   // ================= start =================
