@@ -41,7 +41,7 @@
 
   .app {
     display: grid;
-    grid-template-columns: 310px minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-columns: 300px minmax(0, 1fr) 360px;
     gap: 12px; padding: 12px;
     height: calc(100vh - 49px); min-height: 640px;
   }
@@ -159,6 +159,46 @@
   .chart-panel .group-title { margin-bottom: 4px; }
   .chart-wrap { position: relative; flex: 1; min-height: 0; }
 
+  /* ---------- right side panel ---------- */
+  .side { display: flex; flex-direction: column; overflow-y: auto; }
+  .side-sec { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .side-sec:last-child { border-bottom: 0; }
+  .sec-title { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .side .day-line { margin-bottom: 8px; flex-direction: column; align-items: flex-start; gap: 1px; }
+  .side .day-line .status { text-align: left; }
+  .sec-title { white-space: nowrap; }
+  .seg label { white-space: nowrap; }
+  .seg.c4 label { font-size: 12px; padding: 6px 0; }
+  .side .progress { margin-bottom: 0; }
+  .mix { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; background: var(--panel-2); }
+  .mix div { height: 100%; min-width: 0; transition: width .35s ease; }
+  .mix-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin-top: 9px; font-size: 12.5px; }
+  .ml { display: flex; align-items: center; gap: 6px; }
+  .ml-name { color: var(--muted); flex: 1; }
+  .ml b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ml-pct { color: var(--muted); font-size: 11.5px; min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+  .ml { min-width: 0; }
+  .ml .dot, .kpi-sub .dot { flex: none; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .kpi-lbl { font-size: 11px; color: var(--muted); }
+  .kpi-val { font-size: 26px; font-weight: 650; line-height: 1.15; font-variant-numeric: tabular-nums; margin: 2px 0 1px; }
+  .kpi-sub { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .chart-sec { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 270px; }
+  .sec-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .sec-head .sec-title { margin: 0; }
+  .seg.mini { grid-template-columns: repeat(2, auto); margin: 0; }
+  .seg.mini label { padding: 3px 9px; font-size: 11.5px; }
+  .chart-sec .chart-wrap { min-height: 210px; }
+  .agebars { display: grid; gap: 7px; }
+  .ab { display: grid; grid-template-columns: 92px 1fr 38px; align-items: center; gap: 8px; font-size: 12.5px; }
+  .ab .nm { color: var(--muted); }
+  .ab .track { height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+  .ab .fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width .35s ease; }
+  .ab .v { text-align: right; font-variant-numeric: tabular-nums; }
+  details.net summary { cursor: pointer; font-size: 12.5px; color: var(--muted); user-select: none; }
+  details.net summary:hover { color: var(--text); }
+  details.net .metrics { margin-top: 9px; grid-template-columns: 1fr; }
+
   /* ---------- wow ---------- */
   .live { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--border); margin-right: 9px; vertical-align: 1px; }
   .live.on { background: var(--I); animation: livePulse 1.4s infinite; }
@@ -237,7 +277,8 @@
   @media (max-width: 1200px) {
     .app { grid-template-columns: 290px minmax(0, 1fr); height: auto; }
     .graph-panel { height: 60vh; min-height: 380px; }
-    .right { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: none; }
+    .side { grid-column: 1 / -1; overflow: visible; }
+    .chart-sec { min-height: 320px; }
     .chart-panel { min-height: 320px; }
   }
   @media (max-width: 900px) {
@@ -246,7 +287,7 @@
   }
   @media (max-width: 760px) {
     .app { grid-template-columns: minmax(0, 1fr); padding: 8px 16px; }
-    .right { grid-template-columns: minmax(0, 1fr); }
+    .kpi-val { font-size: 22px; }
     .graph-panel { height: 70vw; min-height: 320px; }
     .cards { grid-template-columns: repeat(2, 1fr); }
     .caption { font-size: 14px; bottom: 44px; }
@@ -262,7 +303,7 @@
   <h1><span class="live" id="live" title="Симуляция идёт"></span>Эпидемия на случайном графе</h1>
   <span class="sub">модель SEIR на графе Эрдёша — Реньи G(n, p)</span>
   <a href="#compare">Сравнение прогнозов ↓</a>
-  <a class="ver" href="versions/" title="Номер версии и список предыдущих версий">v3.0</a>
+  <a class="ver" href="versions/" title="Номер версии и список предыдущих версий">v3.1</a>
 </header>
 
 <div class="app">
@@ -402,36 +443,60 @@
   </section>
 
   <!-- ======== Stats + chart ======== -->
-  <div class="right">
-    <section class="panel stats">
+  <aside class="panel side" id="side">
+    <div class="side-sec">
       <div class="day-line">
         <div class="day" id="dayLabel">День 0 из 60</div>
         <div class="status" id="status"></div>
       </div>
       <div class="progress"><div id="progress"></div></div>
-      <div class="cards">
-        <div class="card" style="border-color:var(--S)"><div class="lbl">S · здоровые</div><div class="val" id="cS">0</div><div class="pct" id="pS"></div></div>
-        <div class="card" style="border-color:var(--E)"><div class="lbl">E · инкубация</div><div class="val" id="cE">0</div><div class="pct" id="pE"></div></div>
-        <div class="card" style="border-color:var(--I)"><div class="lbl">I · больные</div><div class="val" id="cI">0</div><div class="pct" id="pI"></div></div>
-        <div class="card" style="border-color:var(--R)"><div class="lbl">R · выздоровели</div><div class="val" id="cR">0</div><div class="pct" id="pR"></div></div>
+    </div>
+
+    <div class="side-sec">
+      <p class="sec-title">Город сейчас</p>
+      <div class="mix" aria-hidden="true">
+        <div id="segS" style="background:var(--S)"></div><div id="segE" style="background:var(--E)"></div><div id="segI" style="background:var(--I)"></div><div id="segR" style="background:var(--R)"></div>
       </div>
+      <div class="mix-legend">
+        <div class="ml"><i class="dot" style="background:var(--S)"></i><span class="ml-name">Здоровые</span><b id="cS">0</b><span class="ml-pct" id="pS"></span></div>
+        <div class="ml"><i class="dot" style="background:var(--I)"></i><span class="ml-name">Больные</span><b id="cI">0</b><span class="ml-pct" id="pI"></span></div>
+        <div class="ml"><i class="dot" style="background:var(--E)"></i><span class="ml-name">Инкубация</span><b id="cE">0</b><span class="ml-pct" id="pE"></span></div>
+        <div class="ml"><i class="dot" style="background:var(--R)"></i><span class="ml-name">Выздоровели</span><b id="cR">0</b><span class="ml-pct" id="pR"></span></div>
+      </div>
+    </div>
+
+    <div class="side-sec kpis">
+      <div><div class="kpi-lbl">Пик больных</div><div class="kpi-val" id="kPeak">—</div><div class="kpi-sub" id="kPeakSub"></div></div>
+      <div><div class="kpi-lbl">Переболело</div><div class="kpi-val" id="kAttack">—</div><div class="kpi-sub" id="kAttackSub"></div></div>
+      <div><div class="kpi-lbl">R₀</div><div class="kpi-val" id="kR0">—</div><div class="kpi-sub" id="kR0Sub"></div></div>
+    </div>
+
+    <div class="side-sec chart-sec">
+      <div class="sec-head">
+        <p class="sec-title">Эпидемическая волна</p>
+        <div class="seg mini" id="chartMode">
+          <label><input type="radio" name="cmode" value="wave" checked>Волна</label>
+          <label><input type="radio" name="cmode" value="all">Все группы</label>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    </div>
+
+    <div class="side-sec">
+      <p class="sec-title">Заразились по возрастам</p>
+      <div class="agebars" id="ageBars"></div>
+    </div>
+
+    <details class="side-sec net">
+      <summary>О сети контактов и R₀</summary>
       <div class="metrics">
-        <div><span>Пик больных</span><span id="mPeak">—</span></div>
-        <div><span>Всего заражено</span><span id="mAttack">—</span></div>
-        <div class="full"><span>Заражено по возрастам</span><span id="mAge">—</span></div>
-        <div><span>R₀ (оценка)</span><span id="mR0">—</span></div>
         <div><span>Рёбер / факт. k</span><span id="mEdges">—</span></div>
-        <div><span>Макс. компонента</span><span id="mComp">—</span></div>
-        <div><span>Изолированных</span><span id="mIso">—</span></div>
+        <div><span>Крупнейшая связная группа</span><span id="mComp">—</span></div>
+        <div><span>Людей без контактов</span><span id="mIso">—</span></div>
       </div>
       <div class="r0-note" id="r0Note"></div>
-    </section>
-
-    <section class="panel chart-panel">
-      <p class="group-title">Динамика S / E / I / R по дням</p>
-      <div class="chart-wrap"><canvas id="chart"></canvas></div>
-    </section>
-  </div>
+    </details>
+  </aside>
 </div>
 
 <!-- ======== Comparison ======== -->
@@ -801,18 +866,59 @@
   Chart.defaults.color = '#8b95a3';
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
 
+  // "wave": what matters day to day — the sick, the incubating and new cases per day, scaled to the wave itself;
+  // "all": the four groups as plain lines on the whole-population scale
+  let chartMode = 'wave';
+  const chartMarkers = {
+    id: 'markers',
+    afterDatasetsDraw(c) {
+      if (!Sim) return;
+      const x = c.ctx, a = c.chartArea, sx = c.scales.x, sy = c.scales.y;
+      x.save();
+      if (Sim.day > 0 && Sim.day < P.T) {          // today
+        const px = sx.getPixelForValue(Sim.day);
+        x.strokeStyle = 'rgba(230,233,238,.28)'; x.lineWidth = 1;
+        x.beginPath(); x.moveTo(px, a.top); x.lineTo(px, a.bottom); x.stroke();
+      }
+      const pk = Sim.peak;
+      if (pk.v > 0 && Sim.day > pk.day) {          // peak, once it is behind us
+        const px = sx.getPixelForValue(pk.day), py = sy.getPixelForValue(pk.v);
+        x.fillStyle = '#161b22'; x.beginPath(); x.arc(px, py, 6, 0, 2 * Math.PI); x.fill();
+        x.fillStyle = COL[I_]; x.beginPath(); x.arc(px, py, 4, 0, 2 * Math.PI); x.fill();
+        const label = `пик ${pk.v} · ${fmtShort(addDays(P.start, pk.day))}`;
+        x.font = '600 11px ' + Chart.defaults.font.family;
+        const w = x.measureText(label).width;
+        let tx = px - w / 2; tx = Math.max(a.left + 2, Math.min(a.right - w - 2, tx));
+        const ty = Math.max(a.top + 11, py - 10);
+        x.fillStyle = 'rgba(22,27,34,.85)';
+        x.beginPath(); x.roundRect(tx - 4, ty - 11, w + 8, 15, 4); x.fill();
+        x.fillStyle = '#e6e9ee'; x.fillText(label, tx, ty);
+      }
+      x.restore();
+    },
+  };
+
+  function chartDatasets() {
+    const line = (key, label, color, extra = {}) => ({
+      type: 'line', label, data: [], _key: key, borderColor: color, backgroundColor: color,
+      borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.25, fill: false, ...extra,
+    });
+    if (chartMode === 'wave') return [
+      line('I', 'Больные', COL[I_], { fill: 'origin', backgroundColor: 'rgba(229,72,77,.14)', order: 1 }),
+      line('E', 'Инкубация', COL[E_], { order: 2 }),
+      { type: 'bar', label: 'Новые за день', data: [], _key: 'new', backgroundColor: 'rgba(139,149,163,.45)',
+        borderRadius: 2, barPercentage: 0.8, categoryPercentage: 1, order: 3 },
+    ];
+    return [line('S', 'Здоровые', COL[S_]), line('E', 'Инкубация', COL[E_]), line('I', 'Больные', COL[I_]), line('R', 'Выздоровели', COL[R_])];
+  }
+
   function initChart() {
     const labels = d3.range(P.T + 1).map(d => fmtShort(addDays(P.start, d)));
-    const order = [I_, E_, R_, S_];
-    const names = ['I больные', 'E инкубация', 'R выздоровевшие', 'S здоровые'];
-    const datasets = order.map((s, k) => ({
-      label: names[k], data: Array(P.T + 1).fill(null),
-      borderColor: COL[s], backgroundColor: COL[s] + 'b0',
-      fill: k === 0 ? 'origin' : '-1', pointRadius: 0, borderWidth: 1.5, tension: 0.15, _state: s,
-    }));
+    const datasets = chartDatasets();
     if (chart) {
       chart.data.labels = labels; chart.data.datasets = datasets;
-      chart.options.scales.y.max = G.n; chart.update('none');
+      chart.options.scales.y.max = chartMode === 'all' ? G.n : undefined;
+      chart.update('none');
       return;
     }
     chart = new Chart($('chart'), {
@@ -822,13 +928,21 @@
         animation: false, responsive: true, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         scales: {
-          x: { title: { display: true, text: 'дата' }, grid: { color: 'rgba(255,255,255,.05)' }, ticks: { maxTicksLimit: 12 } },
-          y: { stacked: true, min: 0, max: G.n, title: { display: true, text: 'человек' }, grid: { color: 'rgba(255,255,255,.05)' } },
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } },
+          y: { beginAtZero: true, grace: '12%', max: chartMode === 'all' ? G.n : undefined,
+               grid: { color: 'rgba(255,255,255,.06)' }, border: { display: false }, ticks: { maxTicksLimit: 5, precision: 0 } },
         },
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10 } },
+          legend: { position: 'bottom', labels: {
+            boxWidth: 10, boxHeight: 10, font: { size: 11 }, padding: 10,
+            // solid swatches in the series colour (the "sick" area fill is translucent)
+            generateLabels: c => Chart.defaults.plugins.legend.labels.generateLabels(c).map(l => {
+              const ds = c.data.datasets[l.datasetIndex];
+              const col = ds.type === 'bar' ? ds.backgroundColor : ds.borderColor;
+              return Object.assign(l, { fillStyle: col, strokeStyle: col, lineWidth: 0 });
+            }),
+          } },
           tooltip: {
-            itemSort: (a, b) => b.datasetIndex - a.datasetIndex,
             callbacks: {
               title: items => `${fmtDate(addDays(P.start, items[0].dataIndex))} · день ${items[0].dataIndex}`,
               label: it => ` ${it.dataset.label}: ${it.raw} (${pct(it.raw, G.n)})`,
@@ -836,48 +950,65 @@
           },
         },
       },
+      plugins: [chartMarkers],
     });
   }
   function updateChart() {
     for (const ds of chart.data.datasets) {
-      const h = Sim.hist[ds._state];
-      for (let d = 0; d <= P.T; d++) ds.data[d] = d < h.length ? h[d] : null;
+      const src = ds._key === 'new' ? Sim.newInf : Sim.hist[{ S: 0, E: 1, I: 2, R: 3 }[ds._key]];
+      for (let d = 0; d <= P.T; d++) ds.data[d] = d < src.length ? src[d] : null;
     }
     chart.update('none');
   }
 
   // ================= stats =================
-  const ageLine = arr => ['дети', 'подр.', 'взр.']
-    .map((nm, a) => `${nm} ${arr[a] == null ? '—' : Math.round(arr[a] * 100) + '%'}`).join(' · ');
-
   function refresh() {
-    const n = G.n, c = counts(Sim);
+    const n = G.n, c = counts(Sim), total = n - c[S_];
     $('dayLabel').innerHTML = `День ${Sim.day} из ${P.T}<small>${fmtDate(addDays(P.start, Sim.day))}</small>`;
     $('progress').style.width = (100 * Sim.day / P.T) + '%';
-    ['S', 'E', 'I', 'R'].forEach((k, s) => { COUNTERS.target[s] = c[s]; $('p' + k).textContent = pct(c[s], n); });
+    ['S', 'E', 'I', 'R'].forEach((k, s) => {
+      COUNTERS.target[s] = c[s];
+      $('p' + k).textContent = Math.round(100 * c[s] / n) + '%';
+      const seg = $('seg' + k);
+      seg.style.width = (100 * c[s] / n) + '%';
+      seg.style.display = c[s] ? '' : 'none';
+    });
     if (!VIS.fx) setCountersNow();
 
     let status;
-    if (Sim.ended !== null) status = `Эпидемия закончилась ${fmtDate(addDays(P.start, Sim.ended))} (день ${Sim.ended})`;
-    else if (Sim.day >= P.T) status = 'Период симуляции завершён';
+    if (Sim.ended !== null) status = `Эпидемия закончилась ${fmtDate(addDays(P.start, Sim.ended))}`;
+    else if (Sim.day >= P.T) status = 'Период завершён';
     else if (Sim.day === 0) status = 'Готово к запуску';
     else status = playing ? 'Идёт симуляция…' : 'Пауза';
     $('status').textContent = status;
 
-    $('mPeak').textContent = Sim.peak.v ? `${Sim.peak.v} (${pct(Sim.peak.v, n)}), ${fmtShort(addDays(P.start, Sim.peak.day))}` : '—';
-    $('mAttack').textContent = `${n - c[S_]} (${pct(n - c[S_], n)})`;
-    $('mAge').textContent = ageLine(ageAttack(Sim));
+    // headline numbers
+    const pk = Sim.peak;
+    $('kPeak').textContent = Sim.day > 0 ? pk.v : '—';
+    $('kPeakSub').textContent = Sim.day > 0 ? `${pct(pk.v, n)} · ${fmtShort(addDays(P.start, pk.day))}` : 'ещё не было';
+    $('kAttack').textContent = Math.round(100 * total / n) + '%';
+    $('kAttackSub').textContent = `${total} из ${n}`;
+    const r0 = estimateR0();
+    $('kR0').textContent = r0.toFixed(1);
+    const [r0col, r0txt] = r0 > 1.05 ? [COL[I_], 'вспышка вероятна'] : r0 >= 0.95 ? [COL[E_], 'на грани'] : [COL[R_], 'скорее затухнет'];
+    $('kR0Sub').innerHTML = `<i class="dot" style="background:${r0col}"></i>${r0txt}`;
+
+    // by age
+    const att = ageAttack(Sim), names = ['Дети', 'Подростки', 'Взрослые'];
+    $('ageBars').innerHTML = names.map((nm, a) => {
+      const v = att[a], w = v == null ? 0 : Math.round(v * 100);
+      return `<div class="ab"><span class="nm">${nm} · ${G.ageCount[a]}</span><span class="track"><span class="fill" style="display:block;width:${w}%"></span></span><span class="v">${v == null ? '—' : w + '%'}</span></div>`;
+    }).join('');
+
+    // network details
     const kReal = 2 * G.links.length / n;
     $('mEdges').textContent = `${G.links.length} / ${kReal.toFixed(2)}`;
     $('mComp').textContent = `${G.comp} (${pct(G.comp, n)})`;
     $('mIso').textContent = G.iso;
-
-    const r0 = estimateR0();
-    $('mR0').textContent = r0.toFixed(2);
     const note = $('r0Note');
-    if (r0 > 1.05) note.innerHTML = `<b style="color:var(--I)">R₀ ≈ ${r0.toFixed(2)} &gt; 1</b>: вспышка, скорее всего, охватит заметную часть сети (но может и затухнуть случайно в первые дни).`;
+    if (r0 > 1.05) note.innerHTML = `<b style="color:var(--I)">R₀ ≈ ${r0.toFixed(2)} &gt; 1</b>: каждый больной в среднем заражает больше одного человека — вспышка, скорее всего, охватит заметную часть сети (но может и затухнуть случайно в первые дни).`;
     else if (r0 >= 0.95) note.innerHTML = `<b style="color:var(--E)">R₀ ≈ ${r0.toFixed(2)} ≈ 1</b>: пограничный режим, исход сильно зависит от случая.`;
-    else note.innerHTML = `<b style="color:var(--R)">R₀ ≈ ${r0.toFixed(2)} &lt; 1</b>: эпидемия, скорее всего, быстро затухнет.`;
+    else note.innerHTML = `<b style="color:var(--R)">R₀ ≈ ${r0.toFixed(2)} &lt; 1</b>: каждый больной заражает меньше одного человека — эпидемия, скорее всего, быстро затухнет.`;
 
     $('btnStep').disabled = Sim.day >= P.T;
     $('btnPlay').disabled = Sim.day >= P.T;
@@ -1710,6 +1841,10 @@
     resetSim();
   });
   $('I0').addEventListener('input', () => { readParams(); pickInitial(); resetSim(); });
+  $('chartMode').addEventListener('change', () => {
+    chartMode = document.querySelector('input[name=cmode]:checked').value;
+    initChart(); updateChart();
+  });
   $('startDate').addEventListener('change', () => { readParams(); initChart(); refresh(); });
   $('showChains').addEventListener('input', () => { readParams(); requestDraw(); });
   $('speed').addEventListener('input', readParams);
